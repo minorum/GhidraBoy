@@ -42,6 +42,7 @@ import ghidra.util.task.TaskMonitor;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public class GameBoyBankAnalyzer extends AbstractAnalyzer {
@@ -251,6 +252,15 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         if (table == null) {
             return;
         }
+        var targets = tableTargets(program, instr.getAddress(), table);
+        if (targets.isEmpty()) {
+            return;
+        }
+        instr.setFlowOverride(FlowOverride.CALL_RETURN);
+        markTable(program, instr.getAddress(), table, targets, disassemble, monitor, log);
+    }
+
+    static List<Address> tableTargets(Program program, Address from, Address table) {
         var memory = program.getMemory();
         var refs = program.getReferenceManager();
         var targets = new ArrayList<Address>();
@@ -268,7 +278,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             if (entry.getOffset() + 1 >= tableEnd || (i > 0 && refs.hasReferencesTo(entry))) {
                 break;
             }
-            var target = sameBankAddress(program, instr.getAddress(), word);
+            var target = sameBankAddress(program, from, word);
             if (target == null) {
                 break;
             }
@@ -277,14 +287,15 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             }
             targets.add(target);
         }
-        if (targets.isEmpty()) {
-            return;
-        }
-        instr.setFlowOverride(FlowOverride.CALL_RETURN);
+        return targets;
+    }
+
+    static void markTable(Program program, Address from, Address table, List<Address> targets, AddressSet disassemble, TaskMonitor monitor, MessageLog log) {
+        var refs = program.getReferenceManager();
         new ClearFlowAndRepairCmd(table, false, false, true).applyTo(program, monitor);
         for (int i = 0; i < targets.size(); i++) {
             createData(program, table.add(2L * i), WordDataType.dataType, log);
-            refs.addMemoryReference(instr.getAddress(), targets.get(i), RefType.COMPUTED_JUMP, SourceType.ANALYSIS, 0);
+            refs.addMemoryReference(from, targets.get(i), RefType.COMPUTED_JUMP, SourceType.ANALYSIS, 0);
             disassemble.add(targets.get(i));
         }
     }
@@ -304,7 +315,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
     }
 
     // offset in the caller's bank: home area in the default space, banked area in the caller's overlay
-    private static Address sameBankAddress(Program program, Address from, int offset) {
+    static Address sameBankAddress(Program program, Address from, int offset) {
         var space = program.getAddressFactory().getDefaultAddressSpace();
         if (offset < 0x4000) {
             return space.getAddress(offset);

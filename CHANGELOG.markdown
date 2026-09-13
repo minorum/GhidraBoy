@@ -14,6 +14,9 @@
 - "Game Boy Bank Switching" analyzer: resolves calls into banked ROM after
   constant MBC bank register writes, plus optional inline far call and jump
   table dispatchers configured by address
+- "Game Boy JP (HL) Jump Tables" analyzer: recovers word jump tables
+  dispatched through `LD HL,table` ... `LD A,(HL+)` / `LD H,(HL)` / `LD L,A` /
+  `JP HL` when Ghidra's switch recovery finds nothing or reads past the table
 - "Game Boy (SM83) Emulator" for the Debugger: runs `IME`/`HALT`/`STOP` and
   switches ROM banks on MBC register writes (no interrupts)
 

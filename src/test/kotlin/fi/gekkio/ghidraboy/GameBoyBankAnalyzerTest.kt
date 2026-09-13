@@ -13,6 +13,7 @@
 // limitations under the License.
 package fi.gekkio.ghidraboy
 
+import ghidra.app.decompiler.DecompInterface
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager
 import ghidra.app.util.importer.ProgramLoader
 import ghidra.program.model.address.Address
@@ -58,6 +59,12 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             hex("18 fe").copyInto(rom, 0x0170)
             hex("18 fe").copyInto(rom, 0x0174)
             hex("c9").copyInto(rom, 0x0200)
+            // vblank handler: unguarded JP (HL) table at 0x0310
+            hex("c3 00 03").copyInto(rom, 0x0040)
+            hex("fa 00 c0 87 5f 16 00 21 10 03 19 2a 66 6f e9").copyInto(rom, 0x0300)
+            hex("18 03 1c 03").copyInto(rom, 0x0310)
+            hex("18 fe").copyInto(rom, 0x0318)
+            hex("18 fe").copyInto(rom, 0x031c)
             hex("c9").copyInto(rom, 0x8000)
             hex("c9").copyInto(rom, 0xc010)
         }
@@ -155,6 +162,33 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                     ?.name,
             )
             assertNotNull(program.listing.getInstructionAt(program.addr(0x0174)))
+        }
+
+    @Test
+    fun `unguarded JP HL jump table`() =
+        analyze("", "") { program ->
+            assertEquals(setOf(program.addr(0x0318), program.addr(0x031c)), program.refs(0x030e, RefType.COMPUTED_JUMP))
+            assertEquals(
+                "word",
+                program.listing
+                    .getDataAt(program.addr(0x0312))
+                    ?.dataType
+                    ?.name,
+            )
+            assertNotNull(program.listing.getInstructionAt(program.addr(0x031c)))
+            val function = program.functionManager.getFunctionContaining(program.addr(0x030e))
+            assertTrue(function.body.contains(program.addr(0x031c)))
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program))
+                val c =
+                    decompiler
+                        .decompileFunction(function, 10, TaskMonitor.DUMMY)
+                        .decompiledFunction.c
+                assertTrue(c.contains("switch") && !c.contains("halt_baddata"), c)
+            } finally {
+                decompiler.dispose()
+            }
         }
 
     @Test
