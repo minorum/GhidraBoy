@@ -93,6 +93,46 @@ enum class AddHlOp(
     SP(0x39u),
 }
 
+// expected (A, F) for A, operand and carry in
+typealias AluModel = (a: Int, x: Int, c: Int) -> Pair<Int, UByte>
+
+private fun sub(
+    a: Int,
+    x: Int,
+    c: Int,
+): Pair<Int, UByte> {
+    val result = (a - x - c) and 0xff
+    return result to flags(z = result == 0, n = true, h = (a and 0xf) < (x and 0xf) + c, c = a < x + c)
+}
+
+enum class AluOp(
+    val opcode: UByte,
+    val usesCarry: Boolean,
+    val model: AluModel,
+) {
+    ADD(0x80u, false, { a, x, _ ->
+        val result = (a + x) and 0xff
+        result to flags(z = result == 0, n = false, h = (a and 0xf) + (x and 0xf) > 0xf, c = a + x > 0xff)
+    }),
+    ADC(0x88u, true, { a, x, c ->
+        val result = (a + x + c) and 0xff
+        result to flags(z = result == 0, n = false, h = (a and 0xf) + (x and 0xf) + c > 0xf, c = a + x + c > 0xff)
+    }),
+    SUB(0x90u, false, { a, x, _ -> sub(a, x, 0) }),
+    SBC(0x98u, true, { a, x, c -> sub(a, x, c) }),
+    AND(0xa0u, false, { a, x, _ -> (a and x) to flags(z = (a and x) == 0, n = false, h = true, c = false) }),
+    XOR(0xa8u, false, { a, x, _ -> (a xor x) to flags(z = (a xor x) == 0, n = false, h = false, c = false) }),
+    OR(0xb0u, false, { a, x, _ -> (a or x) to flags(z = (a or x) == 0, n = false, h = false, c = false) }),
+    CP(0xb8u, false, { a, x, _ -> a to sub(a, x, 0).second }),
+}
+
+enum class IncDecOp(
+    val opcode: UByte,
+) {
+    INC_B(0x04u),
+    DEC_B(0x05u),
+}
+
 private val WORD_VALUES =
     listOf(0x0000, 0x0001, 0x00ff, 0x0100, 0x0fff, 0x1000, 0x7fff, 0x8000, 0x8fff, 0xf000, 0xf001, 0xffff, 0x1234, 0xedcb)
 
@@ -237,6 +277,60 @@ class FlagInstructionTest : IntegrationTest() {
                         assertEquals(rr.toLong(), emulator.readRegister(op.name), message)
                     }
                 }
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource
+    fun `8-bit arithmetic and logic`(op: AluOp) {
+        val emulator = TestEmulator(language)
+        emulator.write(0x0000u, op.opcode)
+        for (a in 0..0xff) {
+            for (x in 0..0xff) {
+                for (c in if (op.usesCarry) 0..1 else 0..0) {
+                    // vary the flags that must be overwritten
+                    val flagsIn = (if (((a xor x) and 1) == 1) Z_FLAG or N_FLAG or H_FLAG else 0) or (c shl 4)
+                    emulator.writePC(0x0000u)
+                    emulator.writeA(a.toUByte())
+                    emulator.writeB(x.toUByte())
+                    emulator.writeF(flagsIn.toUByte())
+                    emulator.step()
+                    val (result, flagsOut) = op.model(a, x, c)
+                    val message = "A=%02x B=%02x C=%d".format(a, x, c)
+                    assertEquals(result.toUByte(), emulator.readA(), message)
+                    assertEquals(flagsOut, emulator.readF(), message)
+                }
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource
+    fun `INC and DEC`(op: IncDecOp) {
+        val emulator = TestEmulator(language)
+        emulator.write(0x0000u, op.opcode)
+        for (value in 0..0xff) {
+            for (flagsIn in listOf(0x00, 0xf0)) {
+                emulator.writePC(0x0000u)
+                emulator.writeB(value.toUByte())
+                emulator.writeF(flagsIn.toUByte())
+                emulator.step()
+                val carry = (flagsIn and C_FLAG) != 0
+                val (result, flagsOut) =
+                    when (op) {
+                        IncDecOp.INC_B -> {
+                            val r = (value + 1) and 0xff
+                            r to flags(z = r == 0, n = false, h = (value and 0xf) == 0xf, c = carry)
+                        }
+                        IncDecOp.DEC_B -> {
+                            val r = (value - 1) and 0xff
+                            r to flags(z = r == 0, n = true, h = (value and 0xf) == 0, c = carry)
+                        }
+                    }
+                val message = "B=%02x F=%02x".format(value, flagsIn)
+                assertEquals(result.toUByte(), emulator.readB(), message)
+                assertEquals(flagsOut, emulator.readF(), message)
             }
         }
     }

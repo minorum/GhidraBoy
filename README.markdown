@@ -17,8 +17,8 @@ Supported Ghidra versions:
   - Can load greyscale boot ROMs (DMG/DMG0/MGB/SGB/SGB2)
   - Can load color boot ROMs (CGB/CGB0)
 * Memory blocks based on the hardware memory map
-  - Banked regions use overlays (TODO: figure out if there's a better way to
-    support them)
+  - Banked regions use overlays, Ghidra's only way to map several contents
+    at the same address
   - GB vs GBC differences are handled (e.g. banked WRAM)
 - Symbols for hardware registers (0xFFxx range)
   - GB vs GBC differences are handled (e.g. existence of KEY1 register)

@@ -368,6 +368,70 @@ class DecompilerTest : IntegrationTest() {
         )
     }
 
+    @Test
+    fun `INC half carry decompilation`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LD A, C
+                INC A
+                DAA
+                RET
+                """.trimIndent(),
+                name = "inc_daa",
+                params =
+                    listOf(
+                        parameter("value", u8, register("C")),
+                    ),
+                returnParam = returnParameter(u8, register("A")),
+            )
+        assertDecompiled(
+            f,
+            """
+            byte inc_daa(byte value)
+            {
+                char cVar1;
+                byte in_F;
+                cVar1 = daaOperand(value + 1,(in_F & 0x10) >> 4,(value & 0xf) == 0xf,0);
+                return value + 1 + cVar1;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `DEC half carry decompilation`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LD A, C
+                DEC A
+                DAA
+                RET
+                """.trimIndent(),
+                name = "dec_daa",
+                params =
+                    listOf(
+                        parameter("value", u8, register("C")),
+                    ),
+                returnParam = returnParameter(u8, register("A")),
+            )
+        assertDecompiled(
+            f,
+            """
+            byte dec_daa(byte value)
+            {
+                char cVar1;
+                byte in_F;
+                cVar1 = daaOperand(value - 1,(in_F & 0x10) >> 4,(value & 0xf) == 0,1);
+                return (value - 1) + cVar1;
+            }
+            """.trimIndent(),
+        )
+    }
+
     @BeforeAll
     override fun beforeAll() {
         super.beforeAll()

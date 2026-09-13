@@ -152,7 +152,7 @@ macro aluAdc(op8) {
   $(Z_flag) = (tmp == 0);
   $(N_flag) = 0;
   $(H_flag) = (((A & 0xf) + (x & 0xf) + cy) & 0x10) != 0;
-  $(C_flag) = carry(carry(A, x), cy);
+  $(C_flag) = carry(A, x) || carry(A + x, cy);
   A = tmp;
 }
 
@@ -170,10 +170,10 @@ macro aluSbc(op8) {
   local x:1 = op8;
   local cy = $(C_flag);
   local tmp:1 = A - x - cy;
-  $(Z_flag) = (A == 0);
+  $(Z_flag) = (tmp == 0);
   $(N_flag) = 1;
   $(H_flag) = (((A & 0xf) - (x & 0xf) - cy) & 0x10) != 0;
-  $(C_flag) = A < (x + cy);
+  $(C_flag) = (A < x) || ((A - x) < cy);
   A = tmp;
 }
 
@@ -218,7 +218,6 @@ macro aluInc(op8) {
   local tmp:1 = x + 1;
   $(Z_flag) = (tmp == 0);
   $(N_flag) = 0;
-  # TODO: check which one is better for decompilation: (x & 0xf) == 0xf  vs  (((x & 0xf) + 1) & 0x10) != 0
   $(H_flag) = ((x & 0xf) == 0xf);
   op8 = tmp;
 }
@@ -228,7 +227,6 @@ macro aluDec(op8) {
   local tmp:1 = x - 1;
   $(Z_flag) = (tmp == 0);
   $(N_flag) = 1;
-  # TODO: check which one is better for decompilation: (x & 0xf) == 0  vs  (((x & 0xf) - 1) & 0x10) != 0
   $(H_flag) = ((x & 0xf) == 0);
   op8 = tmp;
 }

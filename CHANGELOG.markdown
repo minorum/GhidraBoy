@@ -8,6 +8,12 @@
 - Drop support for Ghidra 11.x
 - Build with Java 21 target
 
+### Fixed
+
+- ADC carry flag was never set when only the carry-in overflowed
+- SBC zero flag was computed from the old A value
+- SBC carry flag missed the borrow for operand 0xff with carry-in
+
 ## 20250830 - 2025-08-30
 
 ### Changed
