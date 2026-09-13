@@ -26,7 +26,8 @@
     <range space="ram" first="0xff44" last="0xff44"/> <!-- LY -->
     <range space="ram" first="0xff4d" last="0xff4d"/> <!-- KEY1 -->
     <range space="ram" first="0xff55" last="0xff56"/> <!-- HDMA5 RP -->
-    <range space="ram" first="0xff68" last="0xff6b"/> <!-- BCPS BCPD OCPS OCPD -->
+    <!-- BCPS BCPD OCPS OCPD: palette index auto-increments on data writes -->
+    <range space="ram" first="0xff68" last="0xff6b"/>
     <range space="ram" first="0xff76" last="0xff77"/> <!-- PCM12 PCM34 -->
   </volatile>
 </processor_spec>

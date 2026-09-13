@@ -246,6 +246,7 @@ class DecompilerTest : IntegrationTest() {
         )
     }
 
+    // Ghidra 12.1 does not recover bitfield writes to volatile memory
     @Test
     fun `IF stays volatile`() {
         val f =

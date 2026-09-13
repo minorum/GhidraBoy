@@ -55,7 +55,9 @@ You can then find a built extension .zip in the `build/distributions` directory.
 ## Open questions / problems
 
 - Decompiler output is difficult to read if certain instructions are used (e.g.
-  rotates, JP HL for jumptables)
+  rotates). The "Game Boy JP (HL) Jump Tables" analyzer recovers
+  `LD A,(HL+)` / `LD H,(HL)` / `LD L,A` / `JP HL` tables Ghidra's switch
+  recovery misses; other pointer loads are not recognized
 - Default "ASM calling convention" assumes all registers can be inputs and/or
   outputs. Inputs/outputs are often guessed incorrectly; the `__asm_a`,
   `__asm_hl`, `__asm_f`, `__asm_void` and `__asm_saved` conventions narrow the

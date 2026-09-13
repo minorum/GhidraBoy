@@ -64,7 +64,15 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             hex("fa 00 c0 87 5f 16 00 21 10 03 19 2a 66 6f e9").copyInto(rom, 0x0300)
             hex("18 03 1c 03").copyInto(rom, 0x0310)
             hex("18 fe").copyInto(rom, 0x0318)
-            hex("18 fe").copyInto(rom, 0x031c)
+            hex("18 fe c9").copyInto(rom, 0x031c)
+            // joypad handler inside the last target's instruction window
+            hex("c3 1e 03").copyInto(rom, 0x0060)
+            // STAT handler: JP (HL) table guarded by CP 2 / RET NC
+            hex("c3 40 03").copyInto(rom, 0x0048)
+            hex("fa 00 c0 fe 02 d0 87 5f 16 00 21 60 03 19 2a 66 6f e9").copyInto(rom, 0x0340)
+            hex("68 03 6a 03").copyInto(rom, 0x0360)
+            hex("c9").copyInto(rom, 0x0368)
+            hex("c9").copyInto(rom, 0x036a)
             hex("c9").copyInto(rom, 0x8000)
             hex("c9").copyInto(rom, 0xc010)
         }
@@ -189,6 +197,15 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             } finally {
                 decompiler.dispose()
             }
+            assertNotNull(program.listing.getInstructionAt(program.addr(0x031e)))
+        }
+
+    @Test
+    fun `guarded JP HL jump table is left to switch recovery`() =
+        analyze("", "") { program ->
+            assertEquals(setOf(program.addr(0x0368), program.addr(0x036a)), program.refs(0x0351, RefType.COMPUTED_JUMP))
+            val namespaces = program.symbolTable.getSymbols(program.addr(0x0351)).map { it.parentNamespace.getName(true) }
+            assertTrue(namespaces.none { it.contains("override") }, namespaces.toString())
         }
 
     @Test

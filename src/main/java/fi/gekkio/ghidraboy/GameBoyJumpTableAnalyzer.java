@@ -24,6 +24,7 @@ import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.data.ByteDataType;
 import ghidra.program.model.lang.Register;
+import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryAccessException;
@@ -64,7 +65,7 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
         var disassemble = new AddressSet();
         for (var instr : program.getListing().getInstructions(set, true)) {
             monitor.checkCancelled();
-            if (!instr.getFlowType().isComputed() || !"JP".equals(instr.getMnemonicString()) || !needsRecovery(program, instr.getAddress())) {
+            if (!instr.getFlowType().isComputed() || !"JP".equals(instr.getMnemonicString())) {
                 continue;
             }
             var table = findTable(program, instr);
@@ -72,7 +73,7 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
                 continue;
             }
             var targets = GameBoyBankAnalyzer.tableTargets(program, instr.getAddress(), table);
-            if (targets.isEmpty()) {
+            if (targets.isEmpty() || !needsRecovery(program, instr.getAddress(), targets)) {
                 continue;
             }
             removeComputedReferences(program, instr.getAddress());
@@ -101,8 +102,8 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
         return true;
     }
 
-    // unresolved, or resolved by other analyzers to targets outside ROM
-    private static boolean needsRecovery(Program program, Address from) {
+    // unresolved, or resolved by other analyzers past the end of the table
+    private static boolean needsRecovery(Program program, Address from, List<Address> targets) {
         var found = false;
         for (var ref : program.getReferenceManager().getReferencesFrom(from)) {
             if (!ref.getReferenceType().isComputed()) {
@@ -111,7 +112,7 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
             if (ref.getSource() != SourceType.ANALYSIS) {
                 return false;
             }
-            if (ref.getToAddress().getOffset() >= 0x8000) {
+            if (!targets.contains(ref.getToAddress())) {
                 return true;
             }
             found = true;
@@ -128,15 +129,18 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
         }
     }
 
-    // decompiler switch recovery types table entries and targets as bytes; keep any other data
+    // decompiler switch recovery types table entries and targets as bytes; keep code and other data
     private static void clearByteData(Program program, Address start, Address end) {
         var listing = program.getListing();
+        var bytes = new ArrayList<Data>();
         for (var data : listing.getDefinedData(new AddressSet(start, end), true)) {
-            if (!(data.getDataType() instanceof ByteDataType)) {
-                return;
+            if (data.getDataType() instanceof ByteDataType) {
+                bytes.add(data);
             }
         }
-        listing.clearCodeUnits(start, end, false);
+        for (var data : bytes) {
+            listing.clearCodeUnits(data.getMinAddress(), data.getMaxAddress(), false);
+        }
     }
 
     // ponytail: only the LD A,(HL+) / LD H,(HL) / LD L,A load, other pointer loads need their own patterns
