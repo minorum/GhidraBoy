@@ -9,6 +9,8 @@
 - Cartridge RAM banks from the header RAM size, as overlays
 - Bitfield data types for LCDC, STAT, IE and IF
 - Loader log: cartridge type, header checksum and ROM size mismatches
+- Calling conventions `__asm_a`, `__asm_hl`, `__asm_f`, `__asm_void` and
+  `__asm_saved` (callee preserves BC, DE and HL)
 
 ### Changed
 

@@ -57,8 +57,9 @@ You can then find a built extension .zip in the `build/distributions` directory.
 - Decompiler output is difficult to read if certain instructions are used (e.g.
   rotates, JP HL for jumptables)
 - Default "ASM calling convention" assumes all registers can be inputs and/or
-  outputs. Inputs/outputs are often guessed incorrectly, so manual tuning is
-  required for almost every function
+  outputs. Inputs/outputs are often guessed incorrectly; the `__asm_a`,
+  `__asm_hl`, `__asm_f`, `__asm_void` and `__asm_saved` conventions narrow the
+  outputs or mark BC/DE/HL as preserved, but still have to be chosen per function
 - Are overlays the only / the best solution for handling banked memory areas?
   Right now in banked ROMs every function call to 0x4000-0x7fff needs to be
   manually resolved to the correct bank(s)

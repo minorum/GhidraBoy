@@ -356,6 +356,55 @@ class DecompilerTest : IntegrationTest() {
     }
 
     @Test
+    fun `calling conventions are available`() {
+        val names = language.defaultCompilerSpec.callingConventions.map { it.name }
+        val expected = listOf("__asm", "__asm_a", "__asm_hl", "__asm_f", "__asm_void", "__asm_saved")
+        assertTrue(names.containsAll(expected), names.toString())
+    }
+
+    private fun callerOfHelper(helperConvention: String): Function {
+        assembleFunction(address(0x0100), "RET", name = "helper", callingConvention = helperConvention)
+        return assembleFunction(
+            address(0x0000),
+            """
+            LD B, 0x12
+            CALL 0x0100
+            LD A, B
+            RET
+            """.trimIndent(),
+            name = "caller",
+            returnParam = returnParameter(u8, register("A")),
+        )
+    }
+
+    @Test
+    fun `default convention clobbers registers across calls`() =
+        assertDecompiled(
+            callerOfHelper("__asm"),
+            """
+            byte caller(void)
+            {
+                byte extraout_B;
+                helper();
+                return extraout_B;
+            }
+            """.trimIndent(),
+        )
+
+    @Test
+    fun `callee-saved convention keeps registers across calls`() =
+        assertDecompiled(
+            callerOfHelper("__asm_saved"),
+            """
+            byte caller(void)
+            {
+                helper();
+                return 0x12;
+            }
+            """.trimIndent(),
+        )
+
+    @Test
     fun `INC half carry decompilation`() {
         val f =
             assembleFunction(
@@ -454,6 +503,7 @@ class DecompilerTest : IntegrationTest() {
         name: String? = null,
         params: List<Parameter>? = null,
         returnParam: Parameter? = null,
+        callingConvention: String = "default",
     ): Function =
         program.withTransaction {
             val instructions: Iterable<Instruction> =
@@ -464,7 +514,6 @@ class DecompilerTest : IntegrationTest() {
             }
             program.functionManager.createFunction(name, address, addressSet, SourceType.USER_DEFINED).apply {
                 setCustomVariableStorage(true)
-                val callingConvention = "default"
                 val force = true
                 if (params != null) {
                     updateFunction(
