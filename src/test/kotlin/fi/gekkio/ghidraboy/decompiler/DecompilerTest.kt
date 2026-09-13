@@ -227,8 +227,8 @@ class DecompilerTest : IntegrationTest() {
             """
             byte popcnt4_upper(byte value)
             {
-                return ((-((char)(value << 1) >> 7) - ((char)value >> 7)) - ((char)(value << 2) >> 7)) -
-                    ((char)(value << 3) >> 7); 
+                return (((value & 0x7f) >> 6) - ((char)value >> 7)) + ((value & 0x3f) >> 5) +
+                    ((value & 0x10) >> 4);
             }
             """.trimIndent(),
         )
@@ -323,8 +323,8 @@ class DecompilerTest : IntegrationTest() {
             """
             word sla8_to_16(byte value)
             {
-                return CONCAT11((((value >> 7) << 1 | (byte)(value << 1) >> 7) << 1 | (byte)(value << 2) >> 7) <<
-                    1 | (byte)(value << 3) >> 7,value << 4);
+                return CONCAT11((((value >> 7) << 1 | (value & 0x7f) >> 6) << 1 | (value & 0x3f) >> 5) << 1 |
+                    (value & 0x1f) >> 4,value << 4);
             }
             """.trimIndent(),
         )
@@ -357,13 +357,12 @@ class DecompilerTest : IntegrationTest() {
             byte daa(byte value)
             {
                 char cVar1;
-                byte bVar2;
                 cVar1 = daaOperand(value + 1,0xfe < value,((value & 0xf) + 1 & 0x10) != 0,0);
-                bVar2 = value + 1 + cVar1;
-                if (bVar2 == 0) {
-                    return bVar2;
+                cVar1 = value + 1 + cVar1;
+                if (cVar1 == '\0') {
+                    return 0;
                 }
-                return bVar2 + 1;
+                return cVar1 + 1;
             }
             """.trimIndent(),
         )

@@ -4,15 +4,7 @@
 
 Supported Ghidra versions:
 
-- 11.4.2
-- 11.4.1
-- 11.3.2
-- 11.3.1
-- 11.3
-- 11.2
-- 11.1.2
-- 11.1.1
-- 11.1
+- 12.1.3
 
 ![Tetris disassembly](screenshot.png)
 

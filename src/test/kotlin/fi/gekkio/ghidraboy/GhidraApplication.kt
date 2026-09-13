@@ -40,6 +40,9 @@ class GhidraApplication : Extension {
                             ).apply {
                                 putAll(super.findGhidraModules())
                             }
+
+                        // skip installed extensions that could shadow this module
+                        override fun findExtensionInstallationDirectories(): MutableList<ResourceFile> = mutableListOf()
                     }
                 val configuration = HeadlessGhidraApplicationConfiguration()
                 Application.initializeApplication(layout, configuration)

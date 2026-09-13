@@ -11,33 +11,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - ghidra_version: "11.1"
-            ghidra_build_date: "20240607"
-            ghidra_sha256: "293f60e04fa480315d2c467f4b2b4b10b3b6b5c8a8416bf7167fe082406e3be8"
-          - ghidra_version: "11.1.1"
-            ghidra_build_date: "20240614"
-            ghidra_sha256: "7fe8d9a6e7e5267f3cf487a0c046b21fb08d7a602facaa2e81ac2f09b5df2866"
-          - ghidra_version: "11.1.2"
-            ghidra_build_date: "20240709"
-            ghidra_sha256: "219ec130b901645779948feeb7cc86f131dd2da6c36284cf538c3a7f3d44b588"
-          - ghidra_version: "11.2"
-            ghidra_build_date: "20240926"
-            ghidra_sha256: "a98fe01038fe8791c54b121ede545ea799d26358794d7c2ac09fa3f5054f3cdc"
-          - ghidra_version: "11.3"
-            ghidra_build_date: "20250205"
-            ghidra_sha256: "73b42cec587f370bfef49809ae55d2c7a3db689e8f164a1e7d7b8de295b6359f"
-          - ghidra_version: "11.3.1"
-            ghidra_build_date: "20250219"
-            ghidra_sha256: "bcda0a9de8993444766cc255964c65c042b291ddaf6c50d654e316e442b441fa"
-          - ghidra_version: "11.3.2"
-            ghidra_build_date: "20250415"
-            ghidra_sha256: "99d45035bdcc3d6627e7b1232b7b379905a9fad76c772c920602e2b5d8b2dac2"
-          - ghidra_version: "11.4.1"
-            ghidra_build_date: "20250731"
-            ghidra_sha256: "59b657c39c2113d65e591c1087b77d85f6f7a11e97f2f4a0c9e7188510d07ea0"
-          - ghidra_version: "11.4.2"
-            ghidra_build_date: "20250826"
-            ghidra_sha256: "795a02076af16257bd6f3f4736c4fc152ce9ff1f95df35cd47e2adc086e037a6"
+          - ghidra_version: "12.1.3"
+            ghidra_build_date: "20260817"
+            ghidra_sha256: "93a5d11a9ad510622acaaf908c556a7b9b764d338e78a7567f3689bf5081fd54"
     env:
       GHIDRA_VERSION: ${{ matrix.ghidra_version }}
       GHIDRA_BUILD_DATE: ${{ matrix.ghidra_build_date }}

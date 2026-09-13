@@ -37,14 +37,14 @@ val ghidraVersion = ghidraProps.getProperty("application.version")!!
 val ghidraRelease = ghidraProps.getProperty("application.release.name")!!
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
     withSourcesJar()
 }
 
 tasks.withType<KotlinCompile> {
     compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
+        jvmTarget.set(JvmTarget.JVM_21)
         optIn.add("kotlin.ExperimentalUnsignedTypes")
     }
 }
@@ -134,6 +134,7 @@ tasks.named("assemble") {
 tasks.named<Test>("test") {
     dependsOn("compileSleigh")
     useJUnitPlatform()
+    jvmArgs("-Djdk.serialFilterFactory=ghidra.framework.remote.GhidraSerialFilterFactory")
 
     systemProperty("ghidra.dir", ghidraDir)
     systemProperty("SystemUtilities.isTesting", true)

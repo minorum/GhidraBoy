@@ -14,10 +14,11 @@
 package fi.gekkio.ghidraboy;
 
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.util.HashUtilities;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.regex.Pattern;
 
 public record Sha256(String value) {
@@ -36,14 +37,14 @@ public record Sha256(String value) {
     }
 
     public static Sha256 of(ByteProvider provider) throws IOException {
-        try (var stream = provider.getInputStream(0)) {
-            return new Sha256(HashUtilities.getHash(HashUtilities.SHA256_ALGORITHM, stream));
-        }
+        return of(provider.readBytes(0, provider.length()));
     }
 
-    public static Sha256 of(byte[] bytes) throws IOException {
-        try (var stream = new ByteArrayInputStream(bytes)) {
-            return new Sha256(HashUtilities.getHash(HashUtilities.SHA256_ALGORITHM, stream));
+    public static Sha256 of(byte[] bytes) {
+        try {
+            return new Sha256(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
         }
     }
 }

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Add support for Ghidra 12.1.3
+- Drop support for Ghidra 11.x
+- Build with Java 21 target
+
 ## 20250830 - 2025-08-30
 
 ### Changed
