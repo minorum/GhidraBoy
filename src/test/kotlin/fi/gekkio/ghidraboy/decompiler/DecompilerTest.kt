@@ -341,13 +341,15 @@ class DecompilerTest : IntegrationTest() {
             """
             byte daa(byte value)
             {
-                char cVar1;
-                cVar1 = daaOperand(value + 1,0xfe < value,((value & 0xf) + 1 & 0x10) != 0,0);
-                cVar1 = value + 1 + cVar1;
-                if (cVar1 == '\0') {
+                byte bVar1;
+                char cVar2;
+                bVar1 = value + 1;
+                cVar2 = bVar1 + ((0xfe < value || 0x99 < bVar1) * '`' |
+                    (((value & 0xf) + 1 & 0x10) != 0 || 9 < (bVar1 & 0xf)) * '\x06');
+                if (cVar2 == '\0') {
                     return 0;
                 }
-                return cVar1 + 1;
+                return cVar2 + 1;
             }
             """.trimIndent(),
         )
@@ -376,10 +378,11 @@ class DecompilerTest : IntegrationTest() {
             """
             byte inc_daa(byte value)
             {
-                char cVar1;
+                byte bVar1;
                 byte in_F;
-                cVar1 = daaOperand(value + 1,(in_F & 0x10) >> 4,(value & 0xf) == 0xf,0);
-                return value + 1 + cVar1;
+                bVar1 = value + 1;
+                return bVar1 + (((bool)((in_F & 0x10) >> 4) || 0x99 < bVar1) * '`' |
+                    ((value & 0xf) == 0xf || 9 < (bVar1 & 0xf)) * '\x06');
             }
             """.trimIndent(),
         )
@@ -408,10 +411,8 @@ class DecompilerTest : IntegrationTest() {
             """
             byte dec_daa(byte value)
             {
-                char cVar1;
                 byte in_F;
-                cVar1 = daaOperand(value - 1,(in_F & 0x10) >> 4,(value & 0xf) == 0,1);
-                return (value - 1) + cVar1;
+                return (value - 1) - (((in_F & 0x10) >> 4) * '`' | ((value & 0xf) == 0) * '\x06');
             }
             """.trimIndent(),
         )

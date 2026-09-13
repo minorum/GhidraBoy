@@ -13,6 +13,10 @@
 - ADC carry flag was never set when only the carry-in overflowed
 - SBC zero flag was computed from the old A value
 - SBC carry flag missed the borrow for operand 0xff with carry-in
+- ROMs that are not a whole number of 16 kB blocks failed to load
+- POP AF kept the low nibble of F
+- STOP is decoded as a 2-byte instruction
+- DAA is implemented in p-code instead of the `daaOperand` user op
 
 ## 20250830 - 2025-08-30
 

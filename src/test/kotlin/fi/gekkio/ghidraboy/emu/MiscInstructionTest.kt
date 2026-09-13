@@ -13,6 +13,7 @@
 // limitations under the License.
 package fi.gekkio.ghidraboy.emu
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -76,19 +77,45 @@ class MiscInstructionTest : EmuTest() {
     fun `STOP`() {
         val ignore = IgnorePCode()
         emulator.registerCallOtherCallback("stop", ignore)
-        emulator.write(0x0000u, 0x10u)
+        emulator.write(0x0000u, 0x10u, 0x00u)
         emulator.step()
         assertTrue(ignore.triggered)
-        emulator.assertPC(0x0001u)
+        emulator.assertPC(0x0002u)
     }
 
     @Test
     fun `DAA`() {
-        emulator.registerCallOtherCallback("daaOperand", IgnorePCode())
-        emulator.writeF(0b0000_0000u)
-        emulator.writeA(0x00u)
         emulator.write(0x0000u, 0x27u)
-        emulator.step()
+        for (a in 0..0xff) {
+            for (flagsIn in 0..0xf) {
+                val n = (flagsIn and 0x4) != 0
+                val h = (flagsIn and 0x2) != 0
+                val c = (flagsIn and 0x1) != 0
+                var offset = 0
+                var carry = c
+                val result =
+                    if (!n) {
+                        if (c || a > 0x99) {
+                            offset = 0x60
+                            carry = true
+                        }
+                        if (h || (a and 0xf) > 0x9) offset = offset or 0x06
+                        (a + offset) and 0xff
+                    } else {
+                        if (c) offset = 0x60
+                        if (h) offset = offset or 0x06
+                        (a - offset) and 0xff
+                    }
+                val flagsOut = (if (result == 0) 0x80 else 0) or (if (n) 0x40 else 0) or (if (carry) 0x10 else 0)
+                emulator.writePC(0x0000u)
+                emulator.writeA(a.toUByte())
+                emulator.writeF((flagsIn shl 4).toUByte())
+                emulator.step()
+                val message = "A=%02x F=%02x".format(a, flagsIn shl 4)
+                assertEquals(result.toUByte(), emulator.readA(), message)
+                assertEquals(flagsOut.toUByte(), emulator.readF(), message)
+            }
+        }
         emulator.assertPC(0x0001u)
     }
 

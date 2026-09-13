@@ -423,7 +423,7 @@
   halt();
 }
 
-:STOP is op0_8=0x10 {
+:STOP is op0_8=0x10; imm8 {
   stop();
 }
 
@@ -453,13 +453,14 @@
 }
 
 :DAA is op0_8=0x27 {
-  local op8:1 = 0;
-  op8 = daaOperand(A, $(C_flag), $(H_flag), $(N_flag));
-  local tmp:1 = A + op8;
-  local co:1 = carry(A, op8);
+  local n:1 = $(N_flag);
+  local hi:1 = $(C_flag) || (!n && (A > 0x99));
+  local lo:1 = $(H_flag) || (!n && ((A & 0xf) > 0x9));
+  local offset:1 = (hi * 0x60) | (lo * 0x06);
+  local tmp:1 = A + offset - (n * 2 * offset);
   $(Z_flag) = (tmp == 0);
   $(H_flag) = 0;
-  $(C_flag) = $(C_flag) || ((!$(N_flag)) && co);
+  $(C_flag) = hi;
   A = tmp;
 }
 
@@ -509,6 +510,12 @@
 
 :POP qregpair4_2 is op6_2=0b11 & qregpair4_2 & op0_4=0b0001 {
   pop16(qregpair4_2);
+}
+
+# low nibble of F always reads as zero
+:POP AF is op0_8=0xf1 & AF {
+  pop16(AF);
+  F = F & 0xf0;
 }
 
 # 16-bit arithmetic

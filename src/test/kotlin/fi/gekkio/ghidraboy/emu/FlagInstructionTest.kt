@@ -15,6 +15,7 @@ package fi.gekkio.ghidraboy.emu
 
 import fi.gekkio.ghidraboy.IntegrationTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.EnumSource
 
@@ -132,6 +133,9 @@ enum class IncDecOp(
     INC_B(0x04u),
     DEC_B(0x05u),
 }
+
+private val EDGE_BYTES =
+    listOf(0x00, 0x01, 0x06, 0x09, 0x0f, 0x10, 0x55, 0x60, 0x7f, 0x80, 0x8f, 0x99, 0xaa, 0xf0, 0xfe, 0xff)
 
 private val WORD_VALUES =
     listOf(0x0000, 0x0001, 0x00ff, 0x0100, 0x0fff, 0x1000, 0x7fff, 0x8000, 0x8fff, 0xf000, 0xf001, 0xffff, 0x1234, 0xedcb)
@@ -331,6 +335,53 @@ class FlagInstructionTest : IntegrationTest() {
                 val message = "B=%02x F=%02x".format(value, flagsIn)
                 assertEquals(result.toUByte(), emulator.readB(), message)
                 assertEquals(flagsOut, emulator.readF(), message)
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource
+    fun `8-bit arithmetic and logic with (HL) and immediate operands`(op: AluOp) {
+        val hlEmulator = TestEmulator(language)
+        hlEmulator.write(0x0000u, (op.opcode.toInt() + 0x06).toUByte())
+        for (x in EDGE_BYTES) {
+            val immEmulator = TestEmulator(language)
+            immEmulator.write(0x0000u, (op.opcode.toInt() + 0x46).toUByte(), x.toUByte())
+            for (a in EDGE_BYTES) {
+                for (c in 0..1) {
+                    val (result, flagsOut) = op.model(a, x, if (op.usesCarry) c else 0)
+                    for ((emulator, form) in listOf(hlEmulator to "(HL)", immEmulator to "n")) {
+                        emulator.writePC(0x0000u)
+                        emulator.writeA(a.toUByte())
+                        emulator.writeHL(MEM_ADDRESS)
+                        emulator.write(MEM_ADDRESS, x.toUByte())
+                        emulator.writeF((c shl 4).toUByte())
+                        emulator.step()
+                        val message = "$form A=%02x x=%02x C=%d".format(a, x, c)
+                        assertEquals(result.toUByte(), emulator.readA(), message)
+                        assertEquals(flagsOut, emulator.readF(), message)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `INC and DEC (HL)`() {
+        for ((opcode, delta) in listOf(0x34 to 1, 0x35 to -1)) {
+            val emulator = TestEmulator(language)
+            emulator.write(0x0000u, opcode.toUByte())
+            for (value in 0..0xff) {
+                emulator.writePC(0x0000u)
+                emulator.writeHL(MEM_ADDRESS)
+                emulator.write(MEM_ADDRESS, value.toUByte())
+                emulator.writeF(0x10u)
+                emulator.step()
+                val result = (value + delta) and 0xff
+                val h = if (delta > 0) (value and 0xf) == 0xf else (value and 0xf) == 0
+                val message = "opcode=%02x (HL)=%02x".format(opcode, value)
+                assertEquals(result.toUByte(), emulator.read(MEM_ADDRESS), message)
+                assertEquals(flags(z = result == 0, n = delta < 0, h = h, c = true), emulator.readF(), message)
             }
         }
     }

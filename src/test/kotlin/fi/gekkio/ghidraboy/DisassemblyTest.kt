@@ -69,7 +69,7 @@ class DisassemblyTest : IntegrationTest() {
     fun `can disassemble RRCA`() = test(0x0f, "RRCA")
 
     @Test
-    fun `can disassemble STOP`() = test(0x10, "STOP")
+    fun `can disassemble STOP`() = test(0x10, "STOP", 0x00)
 
     @Test
     fun `can disassemble LD DE, nn`() = test(0x11, "LD DE,0x1234", 0x34, 0x12)
