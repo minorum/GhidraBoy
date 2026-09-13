@@ -217,7 +217,6 @@
 }
 
 :RLCA is op0_8=0x07 {
-  # TODO: double-check flags
   local co:1 = A[7,1];
   A = (A << 1) | co;
   $(Z_flag) = 0;
@@ -227,7 +226,6 @@
 }
 
 :RLA is op0_8=0x17 {
-  # TODO: double-check flags
   local co:1 = A[7,1];
   A = (A << 1) | $(C_flag);
   $(Z_flag) = 0;
@@ -237,7 +235,6 @@
 }
 
 :RRCA is op0_8=0x0f {
-  # TODO: double-check flags
   local co:1 = A[0,1];
   A = (co << 7) | (A >> 1);
   $(Z_flag) = 0;
@@ -247,7 +244,6 @@
 }
 
 :RRA is op0_8=0x1f {
-  # TODO: double-check flags
   local co:1 = A[0,1];
   A = ($(C_flag) << 7) | (A >> 1);
   $(Z_flag) = 0;
@@ -488,7 +484,6 @@
 }
 
 :LD HL, SP+simm8 is op0_8=0xf8 & HL & SP; simm8 {
-  # TODO: double-check flags
   local tmp:2 = SP + simm8;
   $(Z_flag) = 0;
   $(N_flag) = 0;
@@ -500,7 +495,6 @@
 :LD HL, SP-val is op0_8=0xf8 & HL & SP; simm8 & sign8=1 [
   val = -simm8;
 ] {
-  # TODO: double-check flags
   local tmp:2 = SP + simm8;
   $(Z_flag) = 0;
   $(N_flag) = 0;
@@ -520,7 +514,6 @@
 # 16-bit arithmetic
 
 :ADD HL, sregpair4_2 is op6_2=0b00 & sregpair4_2 & op0_4=0b1001 & HL {
-  # TODO: double-check flags
   local tmp:2 = HL + sregpair4_2;
   $(N_flag) = 0;
   $(H_flag) = (((HL & 0xfff) + (sregpair4_2 & 0xfff)) & 0x1000) != 0;
@@ -529,7 +522,6 @@
 }
 
 :ADD SP, simm8 is op0_8=0xe8 & SP; simm8 {
-  # TODO: double-check flags
   local tmp:2 = SP + simm8;
   $(Z_flag) = 0;
   $(N_flag) = 0;

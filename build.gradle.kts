@@ -132,7 +132,7 @@ tasks.named("assemble") {
 }
 
 tasks.named<Test>("test") {
-    dependsOn("compileSleigh")
+    inputs.files(compileSleigh).withPropertyName("sla")
     useJUnitPlatform()
     jvmArgs("-Djdk.serialFilterFactory=ghidra.framework.remote.GhidraSerialFilterFactory")
 
