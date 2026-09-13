@@ -9,7 +9,6 @@ import fi.gekkio.ghidraboy.withTransaction
 import ghidra.app.decompiler.DecompInterface
 import ghidra.app.plugin.assembler.Assemblers
 import ghidra.app.util.importer.MessageLog
-import ghidra.framework.Application
 import ghidra.program.database.ProgramDB
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSet
@@ -154,20 +153,7 @@ class DecompilerTest : IntegrationTest() {
             )
         assertDecompiled(
             f,
-            when (Application.getApplicationVersion()) {
-                "11.1", "11.1.1", "11.1.2" ->
-                    """
-            void memset(byte *dst,byte val,word len)
-            {
-                for (; (byte)((byte)(len >> 8) | (byte)len) != 0; len = len - 1) {
-                    *dst = val;
-                    dst = dst + 1;
-                }
-                return;
-            }
             """
-                else ->
-                    """
             void memset(byte *dst,byte val,word len)
             {
                 for (; (char)(len >> 8) != '\0' || (char)len != '\0'; len = len - 1) {
@@ -176,8 +162,113 @@ class DecompilerTest : IntegrationTest() {
                 }
                 return;
             }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `LCDC bitfield write`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LDH A, (0x40)
+                OR 0x80
+                LDH (0x40), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
             """
-            },
+            void FUN_0000(void)
+            {
+                LCDC.lcd_enable = 1;
+                return;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `IE bitfield write`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LDH A, (0xFF)
+                AND 0xFE
+                LDH (0xFF), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
+            """
+            void FUN_0000(void)
+            {
+                IE.vblank = 0;
+                return;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `STAT bitfield read`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LDH A, (0x41)
+                AND 0x03
+                CP 0x01
+                RET NZ
+                LD A, 0x01
+                LD (0xC000), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
+            """
+            void FUN_0000(void)
+            {
+                stat sVar1;
+                sVar1 = STAT;
+                if (sVar1.mode != 1) {
+                    return;
+                }
+                DAT_c000 = 1;
+                return;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `IF stays volatile`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LDH A, (0x0F)
+                AND 0xFE
+                LDH (0x0F), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
+            """
+            void FUN_0000(void)
+            {
+                interrupts iVar1;
+                iVar1 = IF;
+                IF = (interrupts)((byte)iVar1 & 0xfe);
+                return;
+            }
+            """.trimIndent(),
         )
     }
 

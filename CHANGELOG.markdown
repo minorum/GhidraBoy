@@ -19,6 +19,9 @@
 
 ### Changed
 
+- Only I/O registers that change without CPU writes are volatile (declared in
+  the processor spec), so the decompiler shows bitfield writes such as
+  `LCDC.lcd_enable = 1`
 - Add support for Ghidra 12.1.3
 - Drop support for Ghidra 11.x
 - Build with Java 21 target

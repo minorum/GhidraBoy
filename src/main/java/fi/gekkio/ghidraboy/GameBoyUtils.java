@@ -61,15 +61,10 @@ public final class GameBoyUtils {
             createEchoBlock(program, "echo", as.getAddress(0xe000), as.getAddress(0xc000), 0x1e00, log);
         }
         createUninitializedBlock(program, false, "oam", as.getAddress(0xfe00), 0xa0, "Object Attribute Memory RAM", source, true, true, false, log);
-        var io = createUninitializedBlock(program, false, "io", as.getAddress(0xff00), 0x80, "I/O registers", source, true, true, false, log);
-        if (io != null) {
-            io.setVolatile(true);
-        }
+        // volatile registers are listed in sm83.pspec
+        createUninitializedBlock(program, false, "io", as.getAddress(0xff00), 0x80, "I/O registers", source, true, true, false, log);
         createUninitializedBlock(program, false, "hram", as.getAddress(0xff80), 0x7f, "High RAM", source, true, true, true, log);
-        var ie = createUninitializedBlock(program, false, "ie", as.getAddress(0xffff), 0x1, "Interrupt Enable register", source, true, true, false, log);
-        if (ie != null) {
-            ie.setVolatile(true);
-        }
+        createUninitializedBlock(program, false, "ie", as.getAddress(0xffff), 0x1, "Interrupt Enable register", source, true, true, false, log);
     }
 
     private static void createEchoBlock(Program program, String name, Address start, Address mapped, int length, MessageLog log) {
