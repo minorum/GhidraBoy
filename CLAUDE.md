@@ -25,7 +25,7 @@ Ghidra version, release name and the zip filename are read from `$GHIDRA_INSTALL
 
 **Tests** (`src/test/kotlin/`): `GhidraApplication` is a JUnit extension that boots headless Ghidra once and registers the repo root as a Ghidra module so the freshly compiled `sm83.sla` is picked up. `IntegrationTest` is the base that resolves the SM83 language. Three test families:
 - `DisassemblyTest`: bytes -> expected mnemonic text.
-- `emu/*`: run instructions in Ghidra's `EmulatorHelper` (`EmuTest` base) and assert register/flag/memory state; `FailOnMemoryFault` makes stray accesses fail.
+- `emu/*`: run instructions in Ghidra's `PcodeEmulator` via `TestEmulator` (`EmuTest` base) and assert register/flag/memory state; `EmulatorCallbacks` fails uninitialized reads and unregistered userops.
 - `decompiler/DecompilerTest`: assemble a snippet, decompile, compare exact C output.
 
 Changing anything in `sm83*.sinc` should be covered by all three where applicable; the emulator tests are the semantic oracle for p-code.

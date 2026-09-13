@@ -13,15 +13,7 @@
 // limitations under the License.
 package fi.gekkio.ghidraboy.emu
 
-import ghidra.pcode.emulate.BreakCallBack
-import ghidra.pcode.pcoderaw.PcodeOpRaw
-
-class IgnorePCode : BreakCallBack() {
+class IgnorePCode {
     var triggered: Boolean = false
-        private set
-
-    override fun pcodeCallback(op: PcodeOpRaw): Boolean {
-        triggered = true
-        return true
-    }
+        internal set
 }

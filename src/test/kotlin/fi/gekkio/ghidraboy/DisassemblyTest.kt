@@ -13,7 +13,9 @@
 // limitations under the License.
 package fi.gekkio.ghidraboy
 
-import ghidra.app.emulator.EmulatorHelper
+import ghidra.pcode.emu.PcodeEmulator
+import ghidra.pcode.exec.PcodeArithmetic.Purpose
+import ghidra.pcode.exec.PcodeExecutorStatePiece.Reason
 import ghidra.program.database.ProgramDB
 import ghidra.program.disassemble.Disassembler
 import ghidra.program.model.listing.CodeUnit
@@ -759,11 +761,16 @@ class DisassemblyTest : IntegrationTest() {
     @Test
     fun `can disassemble RST 0x28`() =
         test(0xef, "RST 0x0028") {
-            val helper = EmulatorHelper(it.program)
-            helper.writeRegister("SP", 0xffff)
-            helper.step(TaskMonitor.DUMMY)
-            println(helper.readRegister("SP"))
-            println(helper.readRegister("PC"))
+            val emulator = PcodeEmulator(language)
+            emulator.sharedState.setVar(it.address, it.length, true, it.bytes)
+            val thread = emulator.newThread()
+            val sp = language.getRegister("SP")
+            val pc = language.programCounter
+            thread.state.setVar(sp, emulator.arithmetic.fromConst(0xffff, sp.minimumByteSize))
+            thread.overrideCounter(it.address)
+            thread.stepInstruction()
+            println(emulator.arithmetic.toBigInteger(thread.state.getVar(sp, Reason.INSPECT), Purpose.INSPECT))
+            println(emulator.arithmetic.toBigInteger(thread.state.getVar(pc, Reason.INSPECT), Purpose.INSPECT))
         }
 
     @Test

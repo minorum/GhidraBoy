@@ -15,8 +15,26 @@ package fi.gekkio.ghidraboy.emu
 
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 class MiscInstructionTest : EmuTest() {
+    private fun assertStepFails(message: String) {
+        val e = assertThrows<Throwable> { emulator.step() }
+        assertTrue(generateSequence(e) { it.cause }.any { it.message?.contains(message) == true }, e.toString())
+    }
+
+    @Test
+    fun `uninitialized register read fails`() {
+        emulator.write(0x0000u, 0x3cu)
+        assertStepFails("Uninitialized register read")
+    }
+
+    @Test
+    fun `unregistered userop fails`() {
+        emulator.write(0x0000u, 0xf3u)
+        assertStepFails("IME")
+    }
+
     @Test
     fun `NOP`() {
         emulator.write(0x0000u, 0x00u)

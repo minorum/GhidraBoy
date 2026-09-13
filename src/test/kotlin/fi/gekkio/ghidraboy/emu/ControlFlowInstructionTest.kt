@@ -22,6 +22,7 @@ import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.ArgumentsProvider
 import org.junit.jupiter.params.provider.ArgumentsSource
 import org.junit.jupiter.params.provider.EnumSource
+import org.junit.jupiter.params.support.ParameterDeclarations
 import java.util.stream.Stream
 
 class ControlFlowInstructionTest : EmuTest() {
@@ -200,8 +201,10 @@ class ControlFlowInstructionTest : EmuTest() {
 }
 
 private class Conditions : ArgumentsProvider {
-    override fun provideArguments(context: ExtensionContext): Stream<out Arguments> =
-        Condition.values().flatMap { listOf(Arguments.of(it, false), Arguments.of(it, true)) }.stream()
+    override fun provideArguments(
+        parameters: ParameterDeclarations,
+        context: ExtensionContext,
+    ): Stream<out Arguments> = Condition.values().flatMap { listOf(Arguments.of(it, false), Arguments.of(it, true)) }.stream()
 }
 
 enum class Rst(
