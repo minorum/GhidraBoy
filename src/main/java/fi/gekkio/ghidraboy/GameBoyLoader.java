@@ -17,6 +17,7 @@ import ghidra.app.util.MemoryBlockUtils;
 import ghidra.app.util.Option;
 import ghidra.app.util.OptionUtils;
 import ghidra.app.util.bin.ByteProvider;
+import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.*;
 import ghidra.app.util.opinion.Loader.ImporterSettings;
 import ghidra.framework.model.DomainObject;
@@ -48,6 +49,28 @@ public class GameBoyLoader extends AbstractProgramLoader {
     private static final String OPT_HW_BLOCKS = "Create GB hardware memory blocks";
     private static final String OPT_DATA_TYPES = "Create GB data types";
     private static final String OPT_KIND = "Hardware type";
+    private static final String[] VECTOR_NAMES = {
+            "rst00", "rst08", "rst10", "rst18", "rst20", "rst28", "rst30", "rst38",
+            "intr_vblank", "intr_stat", "intr_timer", "intr_serial", "intr_joypad",
+    };
+
+    private static void checkHeader(ByteProvider provider, MessageLog log) throws IOException {
+        var header = provider.readBytes(0, 0x150);
+        var type = header[0x147] & 0xff;
+        var typeName = DataTypes.CART_TYPE.getName(type);
+        log.appendMsg("Cartridge type: " + (typeName != null ? typeName : "unknown (0x%02x)".formatted(type)));
+        var sizeCode = header[0x148] & 0xff;
+        if (sizeCode <= 8 && provider.length() != (0x8000L << sizeCode)) {
+            log.appendMsg("ROM size mismatch: header declares %d bytes, file has %d".formatted(0x8000L << sizeCode, provider.length()));
+        }
+        var checksum = 0;
+        for (int i = 0x134; i <= 0x14c; i++) {
+            checksum = checksum - (header[i] & 0xff) - 1;
+        }
+        if ((checksum & 0xff) != (header[0x14d] & 0xff)) {
+            log.appendMsg("Header checksum mismatch: computed 0x%02x, header has 0x%02x".formatted(checksum & 0xff, header[0x14d] & 0xff));
+        }
+    }
 
     @Override
     public String getName() {
@@ -163,6 +186,7 @@ public class GameBoyLoader extends AbstractProgramLoader {
         } else {
             var size = rom.getSize();
             var banked = size > 0x8000;
+            checkHeader(provider, log);
             try {
                 createInitializedBlock(program, false, banked ? "rom0" : "rom", as.getAddress(0x0000), rom, 0, Math.min(size, banked ? 0x4000 : 0x8000), "Cartridge ROM (offset 0)", getName(), true, false, true, log);
                 if (banked) {
@@ -175,22 +199,26 @@ public class GameBoyLoader extends AbstractProgramLoader {
                         bank += 1;
                     }
                 }
-                createUninitializedBlock(program, false, "xram", as.getAddress(0xa000), 0x2000, "Cartridge RAM", getName(), true, true, true, log);
+                var ramBanks = switch (provider.readByte(0x0149)) {
+                    case 3 -> 4;
+                    case 4 -> 16;
+                    case 5 -> 8;
+                    default -> 1;
+                };
+                createUninitializedBlock(program, false, ramBanks > 1 ? "xram0" : "xram", as.getAddress(0xa000), 0x2000, "Cartridge RAM", getName(), true, true, true, log);
+                for (int i = 1; i < ramBanks; i++) {
+                    createUninitializedBlock(program, true, "xram" + i, as.getAddress(0xa000), 0x2000, "Cartridge RAM (bank %d)".formatted(i), getName(), true, true, true, log);
+                }
 
                 var st = program.getSymbolTable();
-                st.createLabel(as.getAddress(0x0000), "rst00", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0008), "rst08", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0010), "rst10", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0018), "rst18", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0020), "rst20", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0028), "rst28", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0030), "rst30", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0038), "rst38", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0040), "intr_vblank", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0048), "intr_stat", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0050), "intr_timer", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0058), "intr_serial", SourceType.IMPORTED);
-                st.createLabel(as.getAddress(0x0060), "intr_joypad", SourceType.IMPORTED);
+                for (int i = 0; i < VECTOR_NAMES.length; i++) {
+                    var vector = as.getAddress(i * 8L);
+                    st.createLabel(vector, VECTOR_NAMES[i], SourceType.IMPORTED);
+                    // 0xff is unused vector filler
+                    if (provider.readByte(i * 8L) != (byte) 0xff) {
+                        st.addExternalEntryPoint(vector);
+                    }
+                }
                 st.addExternalEntryPoint(as.getAddress(0x0100));
                 try {
                     var entry = program.getFunctionManager().createFunction("entry", as.getAddress(0x0100), new AddressSet(as.getAddress(0x0100), as.getAddress(0x103)), SourceType.IMPORTED);

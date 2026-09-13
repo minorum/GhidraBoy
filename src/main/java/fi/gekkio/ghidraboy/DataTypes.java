@@ -39,6 +39,9 @@ public final class DataTypes {
     public static final Enum RAM_SIZE;
     public static final Enum REGION;
     public static final Structure HEADER;
+    public static final Structure LCDC;
+    public static final Structure STAT;
+    public static final Structure INTERRUPTS;
 
     static {
         LOGO = new TypedefDataType(PATH, "logo", array(u8, 0x30));
@@ -131,10 +134,29 @@ public final class DataTypes {
         HEADER.add(u8, "mask_rom_version", null);
         HEADER.add(u8, "header_checksum", null);
         HEADER.add(u16, "global_checksum", null);
+
+        // bitfields from bit 0 upwards
+        LCDC = bitfields("lcdc", "bg_window_enable", "obj_enable", "obj_size", "bg_tilemap", "bg_window_tiledata", "window_enable", "window_tilemap", "lcd_enable");
+        STAT = bitfields("stat", "mode:2", "lyc_equal", "mode0_interrupt", "mode1_interrupt", "mode2_interrupt", "lyc_interrupt", "unused");
+        INTERRUPTS = bitfields("interrupts", "vblank", "stat", "timer", "serial", "joypad", "unused:3");
+    }
+
+    private static Structure bitfields(String name, String... fields) {
+        var s = new StructureDataType(PATH, name, 0);
+        s.setPackingEnabled(true);
+        for (var field : fields) {
+            var parts = field.split(":");
+            try {
+                s.addBitField(u8, parts.length > 1 ? Integer.parseInt(parts[1]) : 1, parts[0], null);
+            } catch (InvalidDataTypeException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+        return s;
     }
 
     public static void addAll(DataTypeManager m) {
-        var types = new DataType[]{LOGO, CGB_FLAG, TITLE_BLOCK_OLD, TITLE_BLOCK_NEW, TITLE_BLOCK, SGB_FLAG, CART_TYPE, ROM_SIZE, RAM_SIZE, REGION, HEADER};
+        var types = new DataType[]{LOGO, CGB_FLAG, TITLE_BLOCK_OLD, TITLE_BLOCK_NEW, TITLE_BLOCK, SGB_FLAG, CART_TYPE, ROM_SIZE, RAM_SIZE, REGION, HEADER, LCDC, STAT, INTERRUPTS};
         var c = m.createCategory(PATH);
         Arrays.stream(types).forEach(d -> c.addDataType(d, DataTypeConflictHandler.DEFAULT_HANDLER));
     }

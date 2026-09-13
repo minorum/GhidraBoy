@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- RST and interrupt vectors are entry points, so analysis creates functions there
+- Echo RAM blocks mapped onto work RAM
+- Cartridge RAM banks from the header RAM size, as overlays
+- Bitfield data types for LCDC, STAT, IE and IF
+- Loader log: cartridge type, header checksum and ROM size mismatches
+
 ### Changed
 
 - Add support for Ghidra 12.1.3
