@@ -1,0 +1,170 @@
+// Copyright 2019-2020 Joonas Javanainen <joonas.javanainen@gmail.com>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+package fi.gekkio.ghidraboy
+
+import ghidra.app.plugin.core.analysis.AutoAnalysisManager
+import ghidra.app.util.importer.ProgramLoader
+import ghidra.program.model.address.Address
+import ghidra.program.model.listing.FlowOverride
+import ghidra.program.model.listing.Program
+import ghidra.program.model.symbol.RefType
+import ghidra.util.task.TaskMonitor
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+
+private val ROM_LOGO =
+    "ceed6666cc0d000b03730083000c000d0008111f8889000edccc6ee6ddddd999bbbb67636e0eecccdddc999fbbb9333e"
+        .chunked(2)
+        .map { it.toInt(16).toByte() }
+        .toByteArray()
+
+private fun hex(text: String) =
+    text
+        .filter { !it.isWhitespace() }
+        .chunked(2)
+        .map { it.toInt(16).toByte() }
+        .toByteArray()
+
+class GameBoyBankAnalyzerTest : IntegrationTest() {
+    // 64 kB MBC5 ROM: bank switch + call, inline far call, RST 00 jump table
+    private fun rom(): ByteArray =
+        ByteArray(0x10000) { 0xff.toByte() }.also { rom ->
+            hex("c9").copyInto(rom, 0x0000)
+            hex("00 c3 50 01").copyInto(rom, 0x0100)
+            ROM_LOGO.copyInto(rom, 0x0104)
+            ByteArray(0x0150 - 0x0134).copyInto(rom, 0x0134)
+            rom[0x0147] = 0x19
+            rom[0x0148] = 0x01
+            hex(
+                """
+                3e 02 ea 00 20 cd 00 40
+                cd 00 02 10 40 03
+                c7 70 01 74 01
+                """,
+            ).copyInto(rom, 0x0150)
+            hex("18 fe").copyInto(rom, 0x0170)
+            hex("18 fe").copyInto(rom, 0x0174)
+            hex("c9").copyInto(rom, 0x0200)
+            hex("c9").copyInto(rom, 0x8000)
+            hex("c9").copyInto(rom, 0xc010)
+        }
+
+    private fun analyze(
+        farCalls: String,
+        jumpTables: String,
+        check: (Program) -> Unit,
+    ) = ProgramLoader
+        .builder()
+        .source(rom())
+        .name("banked.gb")
+        .loaders(GameBoyLoader::class.java)
+        .load()
+        .use { results ->
+            val program = results.getPrimaryDomainObject(this)
+            try {
+                val id = program.startTransaction("analysis")
+                try {
+                    program.getOptions(Program.ANALYSIS_PROPERTIES).getOptions(GameBoyBankAnalyzer.NAME).apply {
+                        setString(GameBoyBankAnalyzer.OPT_FAR_CALLS, farCalls)
+                        setString(GameBoyBankAnalyzer.OPT_JUMP_TABLES, jumpTables)
+                    }
+                    val manager = AutoAnalysisManager.getAnalysisManager(program)
+                    manager.initializeOptions()
+                    manager.reAnalyzeAll(null)
+                    manager.startAnalysis(TaskMonitor.DUMMY)
+                } finally {
+                    program.endTransaction(id, true)
+                }
+                check(program)
+            } finally {
+                program.release(this)
+            }
+        }
+
+    private fun Program.addr(offset: Long) = addressFactory.defaultAddressSpace.getAddress(offset)
+
+    private fun Program.bankAddr(
+        bank: Int,
+        offset: Long,
+    ) = addressFactory.getAddressSpace("rom$bank").getAddress(offset)
+
+    private fun Program.refs(
+        from: Long,
+        type: RefType,
+    ): Set<Address> =
+        referenceManager
+            .getReferencesFrom(addr(from))
+            .filter { it.referenceType == type }
+            .map { it.toAddress }
+            .toSet()
+
+    @Test
+    fun `call after bank register write resolves into the bank`() =
+        analyze("", "") { program ->
+            assertEquals(setOf(program.bankAddr(2, 0x4000)), program.refs(0x0155, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+            assertNotNull(program.functionManager.getFunctionAt(program.bankAddr(2, 0x4000)))
+        }
+
+    @Test
+    fun `inline far call dispatcher`() =
+        analyze("0200", "") { program ->
+            assertEquals(setOf(program.bankAddr(3, 0x4010)), program.refs(0x0158, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+            assertEquals(program.addr(0x015e), program.listing.getInstructionAt(program.addr(0x0158)).fallThrough)
+            assertEquals(
+                "word",
+                program.listing
+                    .getDataAt(program.addr(0x015b))
+                    ?.dataType
+                    ?.name,
+            )
+            assertNotNull(program.functionManager.getFunctionAt(program.bankAddr(3, 0x4010)))
+        }
+
+    @Test
+    fun `inline jump table dispatcher`() =
+        analyze("0200", "0000") { program ->
+            val rst = program.listing.getInstructionAt(program.addr(0x015e))
+            assertEquals("RST", rst.mnemonicString)
+            assertEquals(FlowOverride.CALL_RETURN, rst.flowOverride)
+            assertEquals(setOf(program.addr(0x0170), program.addr(0x0174)), program.refs(0x015e, RefType.COMPUTED_JUMP))
+            assertEquals(
+                "word",
+                program.listing
+                    .getDataAt(program.addr(0x015f))
+                    ?.dataType
+                    ?.name,
+            )
+            assertEquals(
+                "word",
+                program.listing
+                    .getDataAt(program.addr(0x0161))
+                    ?.dataType
+                    ?.name,
+            )
+            assertNotNull(program.listing.getInstructionAt(program.addr(0x0174)))
+        }
+
+    @Test
+    fun `dispatchers are not assumed without options`() =
+        analyze("", "") { program ->
+            assertTrue(program.refs(0x0158, RefType.CALL_OVERRIDE_UNCONDITIONAL).isEmpty())
+            assertTrue(program.refs(0x015e, RefType.COMPUTED_JUMP).isEmpty())
+        }
+
+    @Test
+    fun `dispatcher addresses parse`() =
+        assertEquals(setOf(0x0699L, 0x0L, 0x28L), GameBoyBankAnalyzer.parseAddresses("0x0699, \$0000 28 bogus"))
+}
