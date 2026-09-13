@@ -67,12 +67,13 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             hex("18 fe c9").copyInto(rom, 0x031c)
             // joypad handler inside the last target's instruction window
             hex("c3 1e 03").copyInto(rom, 0x0060)
-            // STAT handler: JP (HL) table guarded by CP 2 / RET NC
-            hex("c3 40 03").copyInto(rom, 0x0048)
-            hex("fa 00 c0 fe 02 d0 87 5f 16 00 21 60 03 19 2a 66 6f e9").copyInto(rom, 0x0340)
-            hex("68 03 6a 03").copyInto(rom, 0x0360)
-            hex("c9").copyInto(rom, 0x0368)
-            hex("c9").copyInto(rom, 0x036a)
+            // STAT handler: JP (HL) table guarded by CP 2 / RET NC; kept below the unguarded table,
+            // whose switch recovery reads past its end
+            hex("c3 80 02").copyInto(rom, 0x0048)
+            hex("fa 00 c0 fe 02 d0 87 5f 16 00 21 a0 02 19 2a 66 6f e9").copyInto(rom, 0x0280)
+            hex("a8 02 aa 02").copyInto(rom, 0x02a0)
+            hex("c9").copyInto(rom, 0x02a8)
+            hex("c9").copyInto(rom, 0x02aa)
             hex("c9").copyInto(rom, 0x8000)
             hex("c9").copyInto(rom, 0xc010)
         }
@@ -203,8 +204,8 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
     @Test
     fun `guarded JP HL jump table is left to switch recovery`() =
         analyze("", "") { program ->
-            assertEquals(setOf(program.addr(0x0368), program.addr(0x036a)), program.refs(0x0351, RefType.COMPUTED_JUMP))
-            val namespaces = program.symbolTable.getSymbols(program.addr(0x0351)).map { it.parentNamespace.getName(true) }
+            assertEquals(setOf(program.addr(0x02a8), program.addr(0x02aa)), program.refs(0x0291, RefType.COMPUTED_JUMP))
+            val namespaces = program.symbolTable.getSymbols(program.addr(0x0291)).map { it.parentNamespace.getName(true) }
             assertTrue(namespaces.none { it.contains("override") }, namespaces.toString())
         }
 
