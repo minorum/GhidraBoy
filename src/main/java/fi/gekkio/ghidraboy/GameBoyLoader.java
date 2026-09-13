@@ -158,18 +158,19 @@ public class GameBoyLoader extends AbstractProgramLoader {
                 st.createLabel(as.getAddress(0x0000), "boot_entry", SourceType.IMPORTED);
             } catch (AddressOverflowException | InvalidInputException e) {
                 log.appendException(e);
-                throw new CancelledException("Loading failed: " + e.getMessage());
+                throw new LoadException("Loading failed: " + e.getMessage());
             }
         } else {
-            var banked = provider.length() > 0x8000;
+            var size = rom.getSize();
+            var banked = size > 0x8000;
             try {
-                createInitializedBlock(program, false, banked ? "rom0" : "rom", as.getAddress(0x0000), rom, 0, banked ? 0x4000 : 0x8000, "Cartridge ROM (offset 0)", getName(), true, false, true, log);
+                createInitializedBlock(program, false, banked ? "rom0" : "rom", as.getAddress(0x0000), rom, 0, Math.min(size, banked ? 0x4000 : 0x8000), "Cartridge ROM (offset 0)", getName(), true, false, true, log);
                 if (banked) {
                     var romX = as.getAddress(0x4000);
                     var offset = 0x4000;
                     var bank = 1;
-                    while (offset < rom.getSize()) {
-                        createInitializedBlock(program, true, "rom" + bank, romX, rom, offset, 0x4000, "Cartridge ROM (offset %d)".formatted(offset), getName(), true, false, true, log);
+                    while (offset < size) {
+                        createInitializedBlock(program, true, "rom" + bank, romX, rom, offset, Math.min(size - offset, 0x4000), "Cartridge ROM (offset %d)".formatted(offset), getName(), true, false, true, log);
                         offset += 0x4000;
                         bank += 1;
                     }
@@ -199,7 +200,7 @@ public class GameBoyLoader extends AbstractProgramLoader {
                 }
             } catch (AddressOverflowException | InvalidInputException e) {
                 log.appendException(e);
-                throw new CancelledException("Loading failed: " + e.getMessage());
+                throw new LoadException("Loading failed: " + e.getMessage());
             }
         }
         var createDataTypes = OptionUtils.getBooleanOptionValue(OPT_DATA_TYPES, options, true);
