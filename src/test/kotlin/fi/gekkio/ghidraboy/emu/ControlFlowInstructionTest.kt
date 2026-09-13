@@ -204,7 +204,7 @@ private class Conditions : ArgumentsProvider {
     override fun provideArguments(
         parameters: ParameterDeclarations,
         context: ExtensionContext,
-    ): Stream<out Arguments> = Condition.values().flatMap { listOf(Arguments.of(it, false), Arguments.of(it, true)) }.stream()
+    ): Stream<out Arguments> = Condition.entries.flatMap { listOf(Arguments.of(it, false), Arguments.of(it, true)) }.stream()
 }
 
 enum class Rst(

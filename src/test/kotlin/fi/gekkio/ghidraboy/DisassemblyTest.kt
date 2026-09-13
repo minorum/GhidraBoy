@@ -13,12 +13,8 @@
 // limitations under the License.
 package fi.gekkio.ghidraboy
 
-import ghidra.pcode.emu.PcodeEmulator
-import ghidra.pcode.exec.PcodeArithmetic.Purpose
-import ghidra.pcode.exec.PcodeExecutorStatePiece.Reason
 import ghidra.program.database.ProgramDB
 import ghidra.program.disassemble.Disassembler
-import ghidra.program.model.listing.CodeUnit
 import ghidra.util.task.TaskMonitor
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -759,19 +755,7 @@ class DisassemblyTest : IntegrationTest() {
     fun `can disassemble XOR n`() = test(0xee, "XOR 0x55", 0x55)
 
     @Test
-    fun `can disassemble RST 0x28`() =
-        test(0xef, "RST 0x0028") {
-            val emulator = PcodeEmulator(language)
-            emulator.sharedState.setVar(it.address, it.length, true, it.bytes)
-            val thread = emulator.newThread()
-            val sp = language.getRegister("SP")
-            val pc = language.programCounter
-            thread.state.setVar(sp, emulator.arithmetic.fromConst(0xffff, sp.minimumByteSize))
-            thread.overrideCounter(it.address)
-            thread.stepInstruction()
-            println(emulator.arithmetic.toBigInteger(thread.state.getVar(sp, Reason.INSPECT), Purpose.INSPECT))
-            println(emulator.arithmetic.toBigInteger(thread.state.getVar(pc, Reason.INSPECT), Purpose.INSPECT))
-        }
+    fun `can disassemble RST 0x28`() = test(0xef, "RST 0x0028")
 
     @Test
     fun `can disassemble LDH A, (n)`() = test(0xf0, "LDH A,(0x55)", 0x55)
@@ -828,23 +812,24 @@ class DisassemblyTest : IntegrationTest() {
         opcode: Int,
         expected: String,
         vararg args: Int,
-        assertions: (codeUnit: CodeUnit) -> Unit = {},
     ) {
-        val codeUnit = disassemble(byteArrayOf(opcode.toByte(), *(args.map { it.toByte() }).toByteArray()))
-        assertEquals(expected, codeUnit.toString())
-        assertions(codeUnit)
+        val text = disassemble(byteArrayOf(opcode.toByte(), *(args.map { it.toByte() }).toByteArray()))
+        assertEquals(expected, text)
     }
 
-    private fun disassemble(bytes: ByteArray): CodeUnit {
-        val consumer = object {}
+    private fun disassemble(bytes: ByteArray): String {
+        val consumer = Any()
         val program = ProgramDB("test", language, language.defaultCompilerSpec, consumer)
+        try {
+            val block = program.withTransaction { program.memory.loadBytes("rom", address(0x0000), bytes) }
 
-        val block = program.withTransaction { program.memory.loadBytes("rom", address(0x0000), bytes) }
-
-        val disassembler = Disassembler.getDisassembler(program, TaskMonitor.DUMMY, null)
-        return program.withTransaction {
-            disassembler.disassemble(block.start, program.memory.loadedAndInitializedAddressSet)
-            program.codeManager.getCodeUnitAt(block.start)
+            val disassembler = Disassembler.getDisassembler(program, TaskMonitor.DUMMY, null)
+            return program.withTransaction {
+                disassembler.disassemble(block.start, program.memory.loadedAndInitializedAddressSet)
+                program.codeManager.getCodeUnitAt(block.start).toString()
+            }
+        } finally {
+            program.release(consumer)
         }
     }
 }

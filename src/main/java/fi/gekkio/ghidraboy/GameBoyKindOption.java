@@ -25,18 +25,6 @@ public class GameBoyKindOption extends Option {
         super(name, GameBoyKind.class, value, null, null);
     }
 
-    public GameBoyKindOption(String group, String name, GameBoyKind value) {
-        super(name, GameBoyKind.class, value, null, group);
-    }
-
-    public GameBoyKindOption(String name) {
-        super(name, GameBoyKind.class, null, null, null);
-    }
-
-    public GameBoyKindOption(String name, GameBoyKind value, String arg) {
-        super(name, GameBoyKind.class, value, arg, null);
-    }
-
     public GameBoyKindOption(String name, GameBoyKind value, String arg, String group) {
         super(name, GameBoyKind.class, value, arg, group);
     }

@@ -115,21 +115,7 @@ class DecompilerTest : IntegrationTest() {
             )
         assertDecompiled(
             f,
-            when (Application.getApplicationVersion()) {
-                "11.1", "11.1.1", "11.1.2" ->
-                    """
-            void memcpy(byte *dst,byte *src,word len)
-            {
-                for (; (byte)((byte)(len >> 8) | (byte)len) != 0; len = len - 1) {
-                    *dst = *src;
-                    src = src + 1;
-                    dst = dst + 1;
-                }
-                return;
-            }
             """
-                else ->
-                    """
             void memcpy(byte *dst,byte *src,word len)
             {
                 for (; (char)(len >> 8) != '\0' || (char)len != '\0'; len = len - 1) {
@@ -139,8 +125,7 @@ class DecompilerTest : IntegrationTest() {
                 }
                 return;
             }
-            """
-            },
+            """.trimIndent(),
         )
     }
 
@@ -438,9 +423,10 @@ class DecompilerTest : IntegrationTest() {
         decompiler = DecompInterface()
     }
 
+    private val consumer = Any()
+
     @BeforeEach
     fun beforeEach() {
-        val consumer = object {}
         program = ProgramDB("test", language, language.defaultCompilerSpec, consumer)
         program.withTransaction {
             program.memory.createInitializedBlock("rom", address(0x0000), 0x8000, 0, TaskMonitor.DUMMY, false)
@@ -453,6 +439,7 @@ class DecompilerTest : IntegrationTest() {
     @AfterEach
     fun afterEach() {
         decompiler.closeProgram()
+        program.release(consumer)
     }
 
     @AfterAll

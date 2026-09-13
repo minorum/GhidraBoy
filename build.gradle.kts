@@ -70,6 +70,7 @@ dependencies {
 
 val generateExtensionProps by tasks.registering {
     val output = layout.buildDirectory.file("generated/extension.properties")
+    inputs.property("ghidraVersion", ghidraVersion)
     outputs.file(output)
     doLast {
         file(output).outputStream().use {
@@ -143,5 +144,5 @@ tasks.named<Test>("test") {
 defaultTasks("clean", "assemble")
 
 ktlint {
-    setVersion("1.7.1")
+    version.set("1.7.1")
 }
