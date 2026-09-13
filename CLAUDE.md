@@ -21,9 +21,13 @@ Ghidra version, release name and the zip filename are read from `$GHIDRA_INSTALL
 
 ## Architecture
 
-**Loader**: banked ROMs (> 32 kB) and CGB VRAM/WRAM banks are modelled as Ghidra overlay blocks; there is no bank-switch analysis, so calls into 0x4000-0x7FFF resolve to a bank only by hand.
+**Loader**: banked ROMs (> 32 kB), cartridge RAM banks and CGB VRAM/WRAM banks are modelled as Ghidra overlay blocks (`romN`, `xramN`, `wramN`).
 
-**Tests** (`src/test/kotlin/`): `GhidraApplication` is a JUnit extension that boots headless Ghidra once and registers the repo root as a Ghidra module so the freshly compiled `sm83.sla` is picked up. `IntegrationTest` is the base that resolves the SM83 language. Three test families:
+**Bank switching**: `GameBoyBankAnalyzer` adds override references from bank 0 calls/jumps into `romN` after `LD A,n` + a write to the MBC bank register (`BankRegister`, decoded from header byte 0x147), and handles game-specific inline far call / jump table dispatchers configured by address in its analysis options (empty by default).
+
+**Emulation**: `GameBoyEmulation` has the userop library for `IME`/`halt`/`stop` and bank-switch callbacks; `GameBoyEmulatorFactory` plugs them into the Debugger. Debug jars are compile-only, so tests exercise `GameBoyEmulation` directly and never load the factory.
+
+**Tests** (`src/test/kotlin/`): `GhidraApplication` is a JUnit extension that boots headless Ghidra once and registers the repo root as a Ghidra module so the freshly compiled `sm83.sla` is picked up; it ignores installed extensions, and the test task points Ghidra's temp, cache and settings dirs into `build/ghidra-test` so a running Ghidra cannot interfere. `IntegrationTest` is the base that resolves the SM83 language. Three test families:
 - `DisassemblyTest`: bytes -> expected mnemonic text.
 - `emu/*`: run instructions in Ghidra's `PcodeEmulator` via `TestEmulator` (`EmuTest` base) and assert register/flag/memory state; `EmulatorCallbacks` fails uninitialized reads and unregistered userops.
 - `decompiler/DecompilerTest`: assemble a snippet, decompile, compare exact C output.

@@ -11,6 +11,11 @@
 - Loader log: cartridge type, header checksum and ROM size mismatches
 - Calling conventions `__asm_a`, `__asm_hl`, `__asm_f`, `__asm_void` and
   `__asm_saved` (callee preserves BC, DE and HL)
+- "Game Boy Bank Switching" analyzer: resolves calls into banked ROM after
+  constant MBC bank register writes, plus optional inline far call and jump
+  table dispatchers configured by address
+- "Game Boy (SM83) Emulator" for the Debugger: runs `IME`/`HALT`/`STOP` and
+  switches ROM banks on MBC register writes (no interrupts)
 
 ### Changed
 

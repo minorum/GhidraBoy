@@ -331,33 +331,4 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         }
         return block.getStart().getAddressSpace().getAddress(offset);
     }
-
-    // ROM bank select register of the cartridge's MBC
-    record BankRegister(int mask, boolean zeroSelectsOne, long start, long end, boolean mbc2) {
-        static BankRegister of(Program program) {
-            int cartType;
-            try {
-                cartType = program.getMemory().getByte(program.getAddressFactory().getDefaultAddressSpace().getAddress(0x0147)) & 0xff;
-            } catch (MemoryAccessException e) {
-                return null;
-            }
-            return switch (cartType) {
-                case 0x01, 0x02, 0x03 -> new BankRegister(0x1f, true, 0x2000, 0x3fff, false);
-                case 0x05, 0x06 -> new BankRegister(0x0f, true, 0x0000, 0x3fff, true);
-                case 0x0f, 0x10, 0x11, 0x12, 0x13 -> new BankRegister(0x7f, true, 0x2000, 0x3fff, false);
-                case 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e -> new BankRegister(0xff, false, 0x2000, 0x2fff, false);
-                default -> null;
-            };
-        }
-
-        boolean contains(long address) {
-            // MBC2 selects the ROM bank when address bit 8 is set
-            return address >= start && address <= end && (!mbc2 || (address & 0x100) != 0);
-        }
-
-        int bank(int value) {
-            var bank = value & mask;
-            return bank == 0 && zeroSelectsOne ? 1 : bank;
-        }
-    }
 }

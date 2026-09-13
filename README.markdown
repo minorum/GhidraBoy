@@ -60,9 +60,10 @@ You can then find a built extension .zip in the `build/distributions` directory.
   outputs. Inputs/outputs are often guessed incorrectly; the `__asm_a`,
   `__asm_hl`, `__asm_f`, `__asm_void` and `__asm_saved` conventions narrow the
   outputs or mark BC/DE/HL as preserved, but still have to be chosen per function
-- Are overlays the only / the best solution for handling banked memory areas?
-  Right now in banked ROMs every function call to 0x4000-0x7fff needs to be
-  manually resolved to the correct bank(s)
+- Banked memory uses overlays. The "Game Boy Bank Switching" analyzer resolves
+  calls into 0x4000-0x7fff after a constant bank register write, and inline
+  far call / jump table dispatchers once their addresses are set in the
+  analysis options; other cross-bank calls still need manual resolution
 
 ## License
 
