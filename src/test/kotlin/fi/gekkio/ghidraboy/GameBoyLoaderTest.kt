@@ -14,9 +14,11 @@
 package fi.gekkio.ghidraboy
 
 import ghidra.app.cmd.disassemble.DisassembleCommand
+import ghidra.app.plugin.core.analysis.AutoAnalysisManager
 import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.importer.ProgramLoader
 import ghidra.program.model.listing.Program
+import ghidra.util.task.TaskMonitor
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -120,6 +122,45 @@ class GameBoyLoaderTest : IntegrationTest() {
                     .map { it.offset }
                     .toSet()
             assertEquals((0x00L..0x60L step 8).toSet() - setOf(0x08L, 0x48L) + 0x100L, entries)
+        }
+    }
+
+    @Test
+    fun `header jump target is the start entry point`() {
+        val cases =
+            mapOf(
+                listOf(0x00, 0xc3, 0x50, 0x01) to 0x0150L,
+                listOf(0xc3, 0x00, 0x02, 0x00) to 0x0200L,
+                listOf(0x00, 0x18, 0x4d, 0x00) to 0x0150L,
+            )
+        cases.forEach { (code, target) ->
+            val bytes = rom(0x8000, code.withIndex().associate { (i, b) -> 0x0100 + i to b })
+            load(bytes) { program ->
+                val space = program.addressFactory.defaultAddressSpace
+                assertTrue(program.symbolTable.isExternalEntryPoint(space.getAddress(target)), code.toString())
+                assertEquals("start", program.symbolTable.getPrimarySymbol(space.getAddress(target))?.name)
+            }
+        }
+        // NOP; JP $0150 / $0150: RET
+        load(rom(0x8000, mapOf(0x0101 to 0xc3, 0x0102 to 0x50, 0x0103 to 0x01, 0x0150 to 0xc9))) { program ->
+            program.withTransaction {
+                val manager = AutoAnalysisManager.getAnalysisManager(program)
+                manager.initializeOptions()
+                manager.reAnalyzeAll(null)
+                manager.startAnalysis(TaskMonitor.DUMMY)
+            }
+            val start = program.addressFactory.defaultAddressSpace.getAddress(0x0150)
+            assertEquals(start, program.functionManager.getFunctionAt(start)?.entryPoint)
+        }
+        // JP into the header, NOP; JR -2 loop, JP past a short ROM
+        listOf(
+            rom(0x8000, mapOf(0x0101 to 0xc3, 0x0102 to 0x34, 0x0103 to 0x01)),
+            rom(0x8000, mapOf(0x0101 to 0x18, 0x0102 to 0xfe)),
+            rom(0x2000, mapOf(0x0101 to 0xc3, 0x0102 to 0x00, 0x0103 to 0x30)),
+        ).forEach { bytes ->
+            load(bytes) { program ->
+                assertEquals(null, program.symbolTable.getSymbols("start").firstOrNull())
+            }
         }
     }
 
