@@ -13,9 +13,11 @@
 // limitations under the License.
 package fi.gekkio.ghidraboy.emu
 
+import fi.gekkio.ghidraboy.GameBoyEmulation
 import ghidra.pcode.emu.PcodeEmulator
 import ghidra.pcode.exec.PcodeArithmetic.Purpose
 import ghidra.pcode.exec.PcodeExecutorStatePiece.Reason
+import ghidra.pcode.exec.PcodeUseropLibrary
 import ghidra.program.model.address.Address
 import ghidra.program.model.lang.Language
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -24,7 +26,10 @@ class TestEmulator(
     val language: Language,
 ) {
     private val ignoredUserops = mutableMapOf<String, IgnorePCode>()
-    private val machine = PcodeEmulator(language, EmulatorCallbacks(ignoredUserops))
+    private val machine =
+        object : PcodeEmulator(language, EmulatorCallbacks(ignoredUserops)) {
+            override fun createUseropLibrary(): PcodeUseropLibrary<ByteArray> = GameBoyEmulation.RamLibrary()
+        }
     private val thread = machine.newThread()
 
     fun registerCallOtherCallback(

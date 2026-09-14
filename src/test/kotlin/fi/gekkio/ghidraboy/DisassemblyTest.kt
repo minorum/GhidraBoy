@@ -743,6 +743,9 @@ class DisassemblyTest : IntegrationTest() {
     fun `can disassemble LD (nn), A`() = test(0xea, "LD (0x1234),A", 0x34, 0x12)
 
     @Test
+    fun `can disassemble LD (nn), A into switchable RAM`() = test(0xea, "LD (0xd9a1),A", 0xa1, 0xd9)
+
+    @Test
     fun `can disassemble 0xeb`() = test(0xeb, "?? EBh")
 
     @Test
@@ -792,6 +795,9 @@ class DisassemblyTest : IntegrationTest() {
 
     @Test
     fun `can disassemble LD A, (nn)`() = test(0xfa, "LD A,(0x1234)", 0x34, 0x12)
+
+    @Test
+    fun `can disassemble LD A, (nn) from switchable RAM`() = test(0xfa, "LD A,(0x8000)", 0x00, 0x80)
 
     @Test
     fun `can disassemble EI`() = test(0xfb, "EI")

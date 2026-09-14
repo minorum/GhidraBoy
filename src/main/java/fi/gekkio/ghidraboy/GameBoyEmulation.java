@@ -49,6 +49,14 @@ public final class GameBoyEmulation {
         }
     }
 
+    // switchable RAM is emulated as one bank; bank_ram only carries the decompiler's bank choice
+    public static final class RamLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
+        @PcodeUserop
+        public byte[] bank_ram(byte[] value) {
+            return value;
+        }
+    }
+
     public static class Emulator extends PcodeEmulator {
         public Emulator(Language language, PcodeEmulationCallbacks<byte[]> callbacks) {
             super(language, callbacks);
@@ -56,7 +64,7 @@ public final class GameBoyEmulation {
 
         @Override
         protected PcodeUseropLibrary<byte[]> createUseropLibrary() {
-            return new UseropLibrary();
+            return new UseropLibrary().compose(new RamLibrary(), false);
         }
     }
 

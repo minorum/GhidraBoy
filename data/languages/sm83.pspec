@@ -15,6 +15,9 @@
   limitations under the License.
 -->
 <processor_spec>
+  <properties>
+    <property key="pcodeInjectLibraryClass" value="fi.gekkio.ghidraboy.PcodeInjectLibrarySm83"/>
+  </properties>
   <programcounter register="PC"/>
   <!-- I/O registers whose value changes without CPU writes -->
   <volatile outputop="write_volatile" inputop="read_volatile">

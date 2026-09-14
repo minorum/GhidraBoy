@@ -146,4 +146,9 @@
       <register name="HL"/>
     </unaffected>
   </prototype>
+  <callotherfixup targetop="bank_ram">
+    <pcode dynamic="true">
+      <input name="value"/>
+    </pcode>
+  </callotherfixup>
 </compiler_spec>

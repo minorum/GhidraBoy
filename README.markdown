@@ -69,7 +69,8 @@ You can then find a built extension .zip in the `build/distributions` directory.
   analysis options; other cross-bank calls still need manual resolution.
   On GBC, VRAM bank 0 and WRAM bank 1 are in the default address space; the
   "Game Boy RAM Banks" analyzer moves references into the other banks after
-  constant `VBK`/`SVBK` writes
+  constant `VBK`/`SVBK` writes, and `LD A,(nn)` / `LD (nn),A` decompile to the
+  selected bank. Accesses through `(HL)` still use the default space
 
 ## License
 

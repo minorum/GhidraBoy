@@ -61,6 +61,29 @@ class DecompilerTest : IntegrationTest() {
     }
 
     @Test
+    fun `switchable RAM without a bank reference`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LD A, (0xd9a1)
+                LD (0x8000), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
+            """
+            void FUN_0000(void)
+            {
+                DAT_8000 = DAT_d9a1;
+                return;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
     fun `Github issue 10`() {
         val f =
             assembleFunction(

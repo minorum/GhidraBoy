@@ -14,6 +14,7 @@
 package fi.gekkio.ghidraboy
 
 import ghidra.app.cmd.disassemble.DisassembleCommand
+import ghidra.app.cmd.function.CreateFunctionCmd
 import ghidra.app.decompiler.DecompInterface
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager
 import ghidra.app.util.importer.MessageLog
@@ -207,6 +208,34 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             assertEquals(listOf("ram:d9a1"), dataRefs(0x016b))
             // LDH (C),A after a constant SVBK write
             assertEquals(listOf("ram:d9a1"), dataRefs(0x0177))
+        }
+
+    @Test
+    fun `decompiler names banked RAM by the selected bank`() =
+        analyze("", "", cgbRom().also { hex("3e 03 e0 70 fa a1 d9 ea 00 c0 c9").copyInto(it, 0x0150) }) { program ->
+            program.withTransaction {
+                program.symbolTable.createLabel(
+                    program.addressFactory.getAddressSpace("wram3").getAddress(0xd9a1),
+                    "bank3_var",
+                    SourceType.USER_DEFINED,
+                )
+                program.symbolTable.createLabel(program.addr(0xd9a1), "bank1_var", SourceType.USER_DEFINED)
+            }
+            val function =
+                program.functionManager.getFunctionContaining(program.addr(0x0154)) ?: program.withTransaction {
+                    CreateFunctionCmd(program.addr(0x0150)).applyTo(program)
+                    program.functionManager.getFunctionAt(program.addr(0x0150))
+                }
+            assertNotNull(function)
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                val results = decompiler.decompileFunction(function, 10, TaskMonitor.DUMMY)
+                val c = results.decompiledFunction?.c
+                assertTrue(c != null && c.contains("bank3_var") && !c.contains("bank1_var"), "${results.errorMessage}\n$c")
+            } finally {
+                decompiler.dispose()
+            }
         }
 
     @Test

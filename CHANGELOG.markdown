@@ -15,7 +15,8 @@
   constant MBC bank register writes, including MBC1/MBC5 upper bank bits, plus
   optional inline far call and jump table dispatchers configured by address
 - "Game Boy RAM Banks" analyzer: moves GBC VRAM/WRAM references into the bank
-  selected by a constant `VBK`/`SVBK` write
+  selected by a constant `VBK`/`SVBK` write; the decompiler follows them for
+  `LD A,(nn)` and `LD (nn),A`
 - "Game Boy JP (HL) Jump Tables" analyzer: recovers word jump tables
   dispatched through `LD HL,table` ... `LD A,(HL+)` / `LD H,(HL)` / `LD L,A` /
   `JP HL` when Ghidra's switch recovery finds nothing or reads past the table
