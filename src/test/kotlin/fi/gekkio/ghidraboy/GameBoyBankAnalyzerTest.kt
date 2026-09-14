@@ -21,7 +21,9 @@ import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.importer.ProgramLoader
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSet
+import ghidra.program.model.data.ArrayDataType
 import ghidra.program.model.data.ByteDataType
+import ghidra.program.model.data.DataUtilities
 import ghidra.program.model.listing.BookmarkType
 import ghidra.program.model.listing.FlowOverride
 import ghidra.program.model.listing.Function.FunctionUpdateType
@@ -131,6 +133,7 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         farCalls: String,
         jumpTables: String,
         bytes: ByteArray = rom(),
+        setup: (Program) -> Unit = {},
         check: (Program) -> Unit,
     ) = ProgramLoader
         .builder()
@@ -143,6 +146,7 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             try {
                 val id = program.startTransaction("analysis")
                 try {
+                    setup(program)
                     program.getOptions(Program.ANALYSIS_PROPERTIES).getOptions(GameBoyBankAnalyzer.NAME).apply {
                         setString(GameBoyBankAnalyzer.OPT_FAR_CALLS, farCalls)
                         setString(GameBoyBankAnalyzer.OPT_JUMP_TABLES, jumpTables)
@@ -820,6 +824,92 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             assertEquals("__interrupt", handler.callingConventionName)
             assertEquals(0, handler.parameterCount)
             assertEquals("void", handler.returnType.name)
+        }
+
+    @Test
+    fun `code disassembled later joins the function that jumps into it`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0620; RET
+                hex("cd 20 06 c9").copyInto(rom, 0x0008)
+                // OR A; JP Z,$0640; RET / $0640: LD A,1; LD ($C001),A; RET
+                hex("b7 ca 40 06 c9").copyInto(rom, 0x0620)
+                hex("3e 01 ea 01 c0 c9").copyInto(rom, 0x0640)
+            },
+            setup = { program ->
+                // the jump target is data until a later fixup clears it
+                DataUtilities.createData(
+                    program,
+                    program.addr(0x0640),
+                    ArrayDataType(ByteDataType.dataType, 6, 1),
+                    -1,
+                    false,
+                    DataUtilities.ClearDataMode.CLEAR_ALL_UNDEFINED_CONFLICT_DATA,
+                )
+            },
+        ) { program ->
+            val manager = AutoAnalysisManager.getAnalysisManager(program)
+            assertEquals(null, program.listing.getInstructionAt(program.addr(0x0640)))
+            program.withTransaction {
+                program.listing.clearCodeUnits(program.addr(0x0640), program.addr(0x0645), false)
+                manager.disassemble(AddressSet(program.addr(0x0640)))
+                manager.startAnalysis(TaskMonitor.DUMMY)
+                program.flushEvents()
+                manager.startAnalysis(TaskMonitor.DUMMY)
+            }
+            val function = program.functionManager.getFunctionAt(program.addr(0x0620))
+            assertNotNull(function)
+            assertNotNull(program.listing.getInstructionAt(program.addr(0x0645)))
+            assertEquals(function, program.functionManager.getFunctionContaining(program.addr(0x0645)))
+        }
+
+    @Test
+    fun `code disassembled later does not take code from another function`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0600; CALL $0650; RET
+                hex("cd 00 06 cd 50 06 c9").copyInto(rom, 0x0008)
+                // G: OR A; JP Z,$0680; RET / $0680: LD A,1; JP $0700 / $0700: RET
+                hex("b7 ca 80 06 c9").copyInto(rom, 0x0600)
+                hex("3e 01 c3 00 07").copyInto(rom, 0x0680)
+                hex("c9").copyInto(rom, 0x0700)
+                // F: OR A; JP Z,$0660; RET / $0660: JP $0700
+                hex("b7 ca 60 06 c9").copyInto(rom, 0x0650)
+                hex("c3 00 07").copyInto(rom, 0x0660)
+            },
+            setup = { program ->
+                // F's jump target is data until a later fixup clears it
+                DataUtilities.createData(
+                    program,
+                    program.addr(0x0660),
+                    ArrayDataType(ByteDataType.dataType, 3, 1),
+                    -1,
+                    false,
+                    DataUtilities.ClearDataMode.CLEAR_ALL_UNDEFINED_CONFLICT_DATA,
+                )
+            },
+        ) { program ->
+            val manager = AutoAnalysisManager.getAnalysisManager(program)
+            val g = program.functionManager.getFunctionAt(program.addr(0x0600))
+            assertNotNull(g)
+            assertEquals(g, program.functionManager.getFunctionContaining(program.addr(0x0680)))
+            program.withTransaction {
+                program.listing.clearCodeUnits(program.addr(0x0660), program.addr(0x0662), false)
+                manager.disassemble(AddressSet(program.addr(0x0660)))
+                manager.startAnalysis(TaskMonitor.DUMMY)
+                program.flushEvents()
+                manager.startAnalysis(TaskMonitor.DUMMY)
+            }
+            val f = program.functionManager.getFunctionAt(program.addr(0x0650))
+            assertNotNull(f)
+            assertEquals(f, program.functionManager.getFunctionContaining(program.addr(0x0660)))
+            listOf(0x0680L, 0x0684L, 0x0700L).forEach {
+                assertEquals(g, program.functionManager.getFunctionContaining(program.addr(it)), it.toString(16))
+            }
         }
 
     @Test
