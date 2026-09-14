@@ -784,6 +784,62 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `branches inside copied code stay in the copied routine`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD HL,$0700; LD DE,$FF80; LD C,6; copy loop; CALL $FF80; RET
+                hex("21 00 07 11 80 ff 0e 06 2a 12 13 0d 20 fa cd 80 ff c9").copyInto(rom, 0x0600)
+                // LD A,3; loop: DEC A; JR NZ,loop; RET
+                hex("3e 03 3d 20 fd c9").copyInto(rom, 0x0700)
+            },
+        ) { program ->
+            val copy = program.addressFactory.getAddressSpace("hram_code_ff80")?.getAddress(0xff80)
+            assertNotNull(copy)
+            val jr = program.listing.getInstructionAt(copy!!.add(3))
+            assertNotNull(jr)
+            assertEquals(FlowOverride.NONE, jr.flowOverride)
+            assertEquals(null, program.functionManager.getFunctionAt(copy.add(2)))
+            assertEquals(program.functionManager.getFunctionAt(copy), program.functionManager.getFunctionContaining(copy.add(5)))
+        }
+
+    @Test
+    fun `copy from past the end of a partial bank is ignored`() =
+        analyze(
+            "",
+            "",
+            rom().copyOf(0x9000).also { rom ->
+                // rom2::4000: LD HL,$5000 (past the bank end); LD DE,$C000; LD C,$10; copy loop; JP $D000
+                hex("21 00 50 11 00 c0 0e 10 2a 12 13 0d 20 fa c3 00 d0").copyInto(rom, 0x8000)
+            },
+        ) { program ->
+            assertTrue(program.memory.blocks.none { it.name.contains("_code_") })
+            val jp = program.listing.getInstructionAt(program.bankAddr(2, 0x400e))
+            assertNotNull(jp)
+            assertEquals(FlowOverride.CALL_RETURN, jp.flowOverride)
+        }
+
+    @Test
+    fun `a copy overlapping an earlier copy maps no second block`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD HL,$0700; LD DE,$DCA8; LD C,$58; copy loop / LD HL,$1000; LD DE,$DC00; LD C,0; copy loop; RET
+                hex("21 00 07 11 a8 dc 0e 58 2a 12 13 0d 20 fa 21 00 10 11 00 dc 0e 00 2a 12 13 0d 20 fa c9").copyInto(rom, 0x0600)
+            },
+        ) { program ->
+            val covering =
+                program.memory.blocks.filter {
+                    it.name.contains("_code_") && it.start.offset <= 0xdca8 && 0xdca8 <= it.end.offset
+                }
+            assertEquals(1, covering.size, covering.joinToString { it.name })
+        }
+
+    @Test
     fun `unguarded JP HL jump table`() =
         analyze("", "") { program ->
             assertEquals(setOf(program.addr(0x0318), program.addr(0x031c)), program.refs(0x030e, RefType.COMPUTED_JUMP))

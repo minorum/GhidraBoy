@@ -131,6 +131,10 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             var isCall = instr.getFlowType().isCall();
             var target = instr.getFlows()[0].getOffset();
             var copy = target >= 0xc000 ? copiedCode(program, target) : null;
+            // branches inside a copied routine stay ordinary flow
+            if (copy != null && copy.getAddressSpace().equals(instr.getAddress().getAddressSpace())) {
+                continue;
+            }
             if (isCall && farCallDispatchers.contains(target)) {
                 farCall(program, instr, banks, disassemble, functions, monitor, log);
             } else if (isCall && jumpTableDispatchers.contains(target)) {
@@ -218,7 +222,8 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         if (!instr.getFlowType().isCall()) {
             instr.setFlowOverride(FlowOverride.CALL_RETURN);
         }
-        addPrimaryReference(program, instr.getAddress(), target, RefType.CALL_OVERRIDE_UNCONDITIONAL);        // the default-space flow error no longer applies
+        addPrimaryReference(program, instr.getAddress(), target, RefType.CALL_OVERRIDE_UNCONDITIONAL);
+        // the default-space flow error no longer applies
         var bookmarks = program.getBookmarkManager();
         for (var bookmark : bookmarks.getBookmarks(instr.getAddress())) {
             if (bookmark.getComment().contains("non-existing memory")) {
@@ -270,7 +275,8 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         var source = sameBankAddress(program, instr.getAddress(), hl);
         var start = program.getAddressFactory().getDefaultAddressSpace().getAddress(de);
         var memory = program.getMemory();
-        if (source == null || !memory.getBlock(source).isInitialized() || copiedCode(program, de) != null) {
+        var sourceBlock = source == null ? null : memory.getBlock(source);
+        if (sourceBlock == null || !sourceBlock.isInitialized() || sourceBlock.getName().contains("_code_") || overlapsCopiedCode(program, de, length)) {
             return;
         }
         try {
@@ -339,6 +345,17 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             cur = prev;
         }
         return values;
+    }
+
+    // any copied routine mapped over [offset, offset + length)
+    private static boolean overlapsCopiedCode(Program program, long offset, int length) {
+        for (var block : program.getMemory().getBlocks()) {
+            if (block.isOverlay() && block.isMapped() && block.getName().contains("_code_")
+                    && block.getStart().getOffset() < offset + length && offset <= block.getEnd().getOffset()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // overlay address of a copied routine covering a default-space RAM offset
