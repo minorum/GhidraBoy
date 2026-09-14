@@ -158,6 +158,23 @@ public class GameBoyLoader extends AbstractProgramLoader {
         }
     }
 
+    // target of the header's [NOP] JP nn / JR e, outside the header
+    static Integer startAddress(ByteProvider provider) throws IOException {
+        long pc = 0x0100;
+        if (provider.readByte(pc) == 0x00) {
+            pc++;
+        }
+        int target;
+        switch (provider.readByte(pc) & 0xff) {
+            case 0xc3 -> target = (provider.readByte(pc + 1) & 0xff) | ((provider.readByte(pc + 2) & 0xff) << 8);
+            case 0x18 -> target = (int) (pc + 2 + provider.readByte(pc + 1));
+            default -> {
+                return null;
+            }
+        }
+        return target < 0x4000 && (target < 0x0104 || target >= 0x0150) ? target : null;
+    }
+
     @Override
     protected void loadProgramInto(Program program, ImporterSettings settings) throws IOException, CancelledException {
         var provider = settings.provider();
@@ -225,6 +242,11 @@ public class GameBoyLoader extends AbstractProgramLoader {
                     entry.setNoReturn(true);
                 } catch (OverlappingFunctionException e) {
                     log.appendException(e);
+                }
+                var start = startAddress(provider);
+                if (start != null) {
+                    st.addExternalEntryPoint(as.getAddress(start));
+                    st.createLabel(as.getAddress(start), "start", SourceType.IMPORTED);
                 }
             } catch (AddressOverflowException | InvalidInputException e) {
                 log.appendException(e);
