@@ -13,6 +13,8 @@
 // limitations under the License.
 package fi.gekkio.ghidraboy
 
+import ghidra.app.cmd.disassemble.DisassembleCommand
+import ghidra.app.cmd.function.CreateFunctionCmd
 import ghidra.app.decompiler.DecompInterface
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager
 import ghidra.app.util.importer.MessageLog
@@ -25,6 +27,7 @@ import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.util.task.TaskMonitor
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -99,6 +102,25 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             (0x4000 until size step 0x4000).forEach { rom[it] = 0xc9.toByte() }
         }
 
+    // CGB ROM reading switchable WRAM and writing VRAM after SVBK/VBK writes
+    private fun cgbRom(): ByteArray =
+        ByteArray(0x8000) { 0xff.toByte() }.also { rom ->
+            hex("00 c3 50 01").copyInto(rom, 0x0100)
+            ROM_LOGO.copyInto(rom, 0x0104)
+            ByteArray(0x0150 - 0x0134).copyInto(rom, 0x0134)
+            rom[0x0143] = 0x80.toByte()
+            hex(
+                """
+                3e 03 e0 70 fa a1 d9
+                3e 01 ea 4f ff ea 00 80
+                3e 00 e0 70 fa a1 d9
+                fa 00 c0 e0 70 fa a1 d9
+                3e 03 e0 70 0e 70 3e 02 e2 fa a1 d9
+                18 fe
+                """,
+            ).copyInto(rom, 0x0150)
+        }
+
     private fun analyze(
         farCalls: String,
         jumpTables: String,
@@ -167,6 +189,106 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         analyze("", "", mbc1Rom(0x10000)) { program ->
             assertEquals(setOf(program.bankAddr(1, 0x4000)), program.refs(0x015a, RefType.CALL_OVERRIDE_UNCONDITIONAL))
         }
+
+    @Test
+    fun `SVBK and VBK writes resolve RAM references into the selected bank`() =
+        analyze("", "", cgbRom()) { program ->
+            fun dataRefs(from: Long) =
+                program.referenceManager
+                    .getReferencesFrom(program.addr(from))
+                    .filter { it.referenceType.isData }
+                    .map { it.toAddress.toString(true) }
+            // LDH ($70),A with A=3
+            assertEquals(listOf("wram3::d9a1"), dataRefs(0x0154))
+            // LD ($FF4F),A with A=1
+            assertEquals(listOf("vram1::8000"), dataRefs(0x015c))
+            // SVBK 0 selects bank 1
+            assertEquals(listOf("ram:d9a1"), dataRefs(0x0163))
+            // SVBK from memory
+            assertEquals(listOf("ram:d9a1"), dataRefs(0x016b))
+            // LDH (C),A after a constant SVBK write
+            assertEquals(listOf("ram:d9a1"), dataRefs(0x0177))
+        }
+
+    @Test
+    fun `decompiler names banked RAM by the selected bank`() =
+        // LD A,3; LDH ($70),A; LD A,1; LDH ($4F),A; LD A,($D9A1); LD ($8000),A; RET
+        analyze("", "", cgbRom().also { hex("3e 03 e0 70 3e 01 e0 4f fa a1 d9 ea 00 80 c9").copyInto(it, 0x0150) }) { program ->
+            program.withTransaction {
+                val symbols = program.symbolTable
+                symbols.createLabel(
+                    program.addressFactory.getAddressSpace("wram3").getAddress(0xd9a1),
+                    "wram3_var",
+                    SourceType.USER_DEFINED,
+                )
+                symbols.createLabel(program.addr(0xd9a1), "wram1_var", SourceType.USER_DEFINED)
+                symbols.createLabel(
+                    program.addressFactory.getAddressSpace("vram1").getAddress(0x8000),
+                    "vram1_var",
+                    SourceType.USER_DEFINED,
+                )
+                symbols.createLabel(program.addr(0x8000), "vram0_var", SourceType.USER_DEFINED)
+            }
+            val function =
+                program.functionManager.getFunctionContaining(program.addr(0x0154)) ?: program.withTransaction {
+                    CreateFunctionCmd(program.addr(0x0150)).applyTo(program)
+                    program.functionManager.getFunctionAt(program.addr(0x0150))
+                }
+            assertNotNull(function)
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                val results = decompiler.decompileFunction(function, 10, TaskMonitor.DUMMY)
+                val c = results.decompiledFunction?.c
+                assertTrue(
+                    c != null && c.contains("vram1_var = wram3_var;") && !c.contains("wram1_var") && !c.contains("vram0_var"),
+                    "${results.errorMessage}\n$c",
+                )
+            } finally {
+                decompiler.dispose()
+            }
+        }
+
+    @Test
+    fun `edited SVBK constant moves the RAM reference`() =
+        analyze("", "", cgbRom()) { program ->
+            program.withTransaction {
+                program.listing.clearCodeUnits(program.addr(0x0150), program.addr(0x0151), false)
+                program.memory.setByte(program.addr(0x0151), 5.toByte())
+                DisassembleCommand(program.addr(0x0150), AddressSet(program.addr(0x0150), program.addr(0x0151)), false).applyTo(program)
+                GameBoyRamBankAnalyzer().added(program, AddressSet(program.addr(0x0154)), TaskMonitor.DUMMY, MessageLog())
+            }
+            assertEquals(
+                listOf("wram5::d9a1"),
+                program.referenceManager
+                    .getReferencesFrom(program.addr(0x0154))
+                    .filter { it.referenceType.isData }
+                    .map { it.toAddress.toString(true) },
+            )
+        }
+
+    @Test
+    fun `re-added default-space RAM reference keeps the bank reference primary`() =
+        analyze("", "", cgbRom()) { program ->
+            program.withTransaction {
+                program.referenceManager.addMemoryReference(
+                    program.addr(0x0154),
+                    program.addr(0xd9a1),
+                    RefType.READ,
+                    SourceType.ANALYSIS,
+                    1,
+                )
+                GameBoyRamBankAnalyzer().added(program, AddressSet(program.addr(0x0154)), TaskMonitor.DUMMY, MessageLog())
+            }
+            val refs = program.referenceManager.getReferencesFrom(program.addr(0x0154)).filter { it.referenceType.isData }
+            assertEquals(listOf("wram3::d9a1" to true), refs.map { it.toAddress.toString(true) to it.isPrimary })
+        }
+
+    @Test
+    fun `RAM bank analyzer only applies to CGB programs`() {
+        analyze("", "") { program -> assertFalse(GameBoyRamBankAnalyzer().canAnalyze(program)) }
+        analyze("", "", cgbRom()) { program -> assertTrue(GameBoyRamBankAnalyzer().canAnalyze(program)) }
+    }
 
     @Test
     fun `inline far call dispatcher`() =

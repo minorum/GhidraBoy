@@ -38,24 +38,18 @@ public final class GameBoyUtils {
         var source = kind == GameBoyKind.CGB ? "Game Boy Color hardware" : "Game Boy hardware";
         var as = program.getAddressFactory().getDefaultAddressSpace();
         if (kind == GameBoyKind.CGB) {
-            createUninitializedBlock(program, true, "vram0", as.getAddress(0x8000), 0x2000, "Video RAM (bank 0)", source, true, true, false, log);
+            createUninitializedBlock(program, false, "vram0", as.getAddress(0x8000), 0x2000, "Video RAM (bank 0)", source, true, true, false, log);
             createUninitializedBlock(program, true, "vram1", as.getAddress(0x8000), 0x2000, "Video RAM (bank 1)", source, true, true, false, log);
         } else {
             createUninitializedBlock(program, false, "vram", as.getAddress(0x8000), 0x2000, "Video RAM", source, true, true, false, log);
         }
         if (kind == GameBoyKind.CGB) {
             createUninitializedBlock(program, false, "wram0", as.getAddress(0xc000), 0x1000, "Work RAM (bank 0)", source, true, true, true, log);
-            Address wram1 = null;
             for (int i = 1; i <= 7; i++) {
-                var block = createUninitializedBlock(program, true, "wram" + i, as.getAddress(0xd000), 0x1000, "Work RAM (bank %d)".formatted(i), source, true, true, true, log);
-                if (i == 1 && block != null) {
-                    wram1 = block.getStart();
-                }
+                createUninitializedBlock(program, i > 1, "wram" + i, as.getAddress(0xd000), 0x1000, "Work RAM (bank %d)".formatted(i), source, true, true, true, log);
             }
             createEchoBlock(program, "echo0", as.getAddress(0xe000), as.getAddress(0xc000), 0x1000, log);
-            if (wram1 != null) {
-                createEchoBlock(program, "echo1", as.getAddress(0xf000), wram1, 0xe00, log);
-            }
+            createEchoBlock(program, "echo1", as.getAddress(0xf000), as.getAddress(0xd000), 0xe00, log);
         } else {
             createUninitializedBlock(program, false, "wram", as.getAddress(0xc000), 0x2000, "Work RAM", source, true, true, true, log);
             createEchoBlock(program, "echo", as.getAddress(0xe000), as.getAddress(0xc000), 0x1e00, log);

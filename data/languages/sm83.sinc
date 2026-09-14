@@ -50,6 +50,7 @@ define token data8 (8)
 
 define token data16 (16)
   imm16 = (0,15)
+  imm16_hi4 = (12,15)
 ;
 
 attach variables [ reg0_3 reg3_3 ] [ B C D E H L _ A ];
@@ -120,6 +121,8 @@ HiMem8: (imm8) is imm8 {
   export *:1 ptr;
 }
 
+# identity; the SM83 inject library redirects it to the analyzed CGB RAM bank
+define pcodeop bank_ram;
 define pcodeop IME;
 define pcodeop halt;
 define pcodeop stop;

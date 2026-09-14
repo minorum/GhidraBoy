@@ -42,6 +42,15 @@ class GameBoyEmulationTest : IntegrationTest() {
     }
 
     @Test
+    fun `switchable RAM loads and stores through bank_ram`() {
+        val emulator = GameBoyEmulation.Emulator(language, PcodeEmulationCallbacks.none())
+        // LD A,0x5a; LD (0xd9a1),A; LD A,0; LD A,(0xd9a1)
+        val thread = emulator.load(0x3e, 0x5a, 0xea, 0xa1, 0xd9, 0x3e, 0x00, 0xfa, 0xa1, 0xd9)
+        repeat(4) { thread.stepInstruction() }
+        assertEquals(0x5aL, thread.register("A"))
+    }
+
+    @Test
     fun `bank register writes swap the ROM window`() {
         val banks = mutableListOf<Int>()
         val switching =

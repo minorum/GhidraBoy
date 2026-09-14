@@ -122,6 +122,9 @@ class LoadInstructionTest : IntegrationTest() {
                 Triple(listOf(0xf2), 0xff33, 1L),
                 Triple(listOf(0xf0, 0x80), 0xff80, 2L),
                 Triple(listOf(0xfa, 0x34, 0x12), 0x1234, 3L),
+                // CGB switchable RAM
+                Triple(listOf(0xfa, 0xa1, 0xd9), 0xd9a1, 3L),
+                Triple(listOf(0xfa, 0x00, 0x80), 0x8000, 3L),
             )
         for ((code, address, pc) in cases) {
             val emulator = emulator(*code.toIntArray())
@@ -140,6 +143,9 @@ class LoadInstructionTest : IntegrationTest() {
                 Triple(listOf(0xe2), 0xff33, 1L),
                 Triple(listOf(0xe0, 0x80), 0xff80, 2L),
                 Triple(listOf(0xea, 0x34, 0x12), 0x1234, 3L),
+                // CGB switchable RAM
+                Triple(listOf(0xea, 0xa1, 0xd9), 0xd9a1, 3L),
+                Triple(listOf(0xea, 0xff, 0x9f), 0x9fff, 3L),
             )
         for ((code, address, pc) in cases) {
             val emulator = emulator(*code.toIntArray())

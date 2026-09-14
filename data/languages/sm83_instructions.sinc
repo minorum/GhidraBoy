@@ -58,6 +58,15 @@
   HiMem8 = A;
 }
 
+# CGB switchable VRAM and WRAM
+:LD A, Mem8 is op0_8=0xfa & A; Mem8 & (imm16_hi4=0x8 | imm16_hi4=0x9 | imm16_hi4=0xd) {
+  A = bank_ram(Mem8);
+}
+
+:LD Mem8, A is op0_8=0xea & A; Mem8 & (imm16_hi4=0x8 | imm16_hi4=0x9 | imm16_hi4=0xd) {
+  Mem8 = bank_ram(A);
+}
+
 :LD A, Mem8 is op0_8=0xfa & A; Mem8 {
   A = Mem8;
 }

@@ -66,7 +66,11 @@ You can then find a built extension .zip in the `build/distributions` directory.
   calls into 0x4000-0x7fff after constant bank register writes (including
   MBC1/MBC5 upper bank bits), and inline
   far call / jump table dispatchers once their addresses are set in the
-  analysis options; other cross-bank calls still need manual resolution
+  analysis options; other cross-bank calls still need manual resolution.
+  On GBC, VRAM bank 0 and WRAM bank 1 are in the default address space; the
+  "Game Boy RAM Banks" analyzer moves references into the other banks after
+  constant `VBK`/`SVBK` writes, and `LD A,(nn)` / `LD (nn),A` decompile to the
+  selected bank. Accesses through `(HL)` still use the default space
 
 ## License
 

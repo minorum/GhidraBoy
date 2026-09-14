@@ -14,6 +14,9 @@
 - "Game Boy Bank Switching" analyzer: resolves calls into banked ROM after
   constant MBC bank register writes, including MBC1/MBC5 upper bank bits, plus
   optional inline far call and jump table dispatchers configured by address
+- "Game Boy RAM Banks" analyzer: moves GBC VRAM/WRAM references into the bank
+  selected by a constant `VBK`/`SVBK` write; the decompiler follows them for
+  `LD A,(nn)` and `LD (nn),A`
 - "Game Boy JP (HL) Jump Tables" analyzer: recovers word jump tables
   dispatched through `LD HL,table` ... `LD A,(HL+)` / `LD H,(HL)` / `LD L,A` /
   `JP HL` when Ghidra's switch recovery finds nothing or reads past the table
@@ -28,6 +31,8 @@
   `LCDC.lcd_enable = 1`. In existing projects, clear the Volatile flag of the
   `io` and `ie` blocks in the Memory Map to get the same result
 - Add support for Ghidra 12.1.3
+- GBC VRAM bank 0 and WRAM bank 1 are default-space blocks, so absolute
+  `$8000-$9FFF` and `$D000-$DFFF` references hit mapped memory
 - Drop support for Ghidra 11.x
 - Build with Java 21 target
 
