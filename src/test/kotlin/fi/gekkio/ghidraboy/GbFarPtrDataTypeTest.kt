@@ -31,16 +31,17 @@ private val LOGO =
         .toByteArray()
 
 class GbFarPtrDataTypeTest : IntegrationTest() {
-    // 64 kB ROM: banks 1-3
+    // 64 kB ROM: banks 1-3; 32 kB ROM: unbanked
     private fun load(
         pointers: Map<Int, List<Int>>,
+        size: Int = 0x10000,
         check: (Program) -> Unit,
     ) = ProgramLoader
         .builder()
         .source(
-            ByteArray(0x10000).also { rom ->
+            ByteArray(size).also { rom ->
                 LOGO.copyInto(rom, 0x0104)
-                rom[0x0148] = 0x01
+                rom[0x0148] = (size / 0x8000).countTrailingZeroBits().toByte()
                 pointers.forEach { (offset, bytes) -> bytes.forEachIndexed { i, b -> rom[offset + i] = b.toByte() } }
             },
         ).name("far.gb")
@@ -102,8 +103,8 @@ class GbFarPtrDataTypeTest : IntegrationTest() {
             assertEquals(listOf("rom2::4123"), program.targets(0x0200))
             assertEquals(listOf("rom2::4123"), program.targets(0x0203))
             assertEquals("rom2::4123", ab.defaultValueRepresentation)
-            // bank 0 and the home area stay in the default space
-            assertEquals(listOf("ram:4123"), program.targets(0x0206))
+            // bank 0 in the banked area has no mapped default-space memory; the home area stays in the default space
+            assertEquals(emptyList<String>(), program.targets(0x0206))
             assertEquals(listOf("ram:0123"), program.targets(0x0209))
             // bank past the ROM size
             assertEquals(emptyList<String>(), program.targets(0x020c))
@@ -111,5 +112,12 @@ class GbFarPtrDataTypeTest : IntegrationTest() {
                 listOf(listOf("rom1::4000"), listOf("rom2::4010"), listOf("rom3::4020")),
                 listOf(0x0210L, 0x0213L, 0x0216L).map { program.targets(it) },
             )
+        }
+
+    @Test
+    fun `far pointers into an unbanked ROM reference the default space`() =
+        load(mapOf(0x0200 to listOf(0x01, 0x23, 0x41)), size = 0x8000) { program ->
+            program.apply(0x0200, GbFarPtrBaDataType())
+            assertEquals(listOf("ram:4123"), program.targets(0x0200))
         }
 }

@@ -104,12 +104,17 @@ public class GbFarPtrBaDataType extends BuiltIn {
         return "FAR_PTR";
     }
 
-    // banked ROM area in romN, anything else in the default space; null for banks the ROM doesn't have
+    // banked ROM area in romN, else mapped default-space memory; null when nothing is there
     static Address target(Program program, int bank, int offset) {
-        if (bank == 0 || offset < 0x4000 || offset >= 0x8000) {
-            return program.getAddressFactory().getDefaultAddressSpace().getAddress(offset);
+        var address = program.getAddressFactory().getDefaultAddressSpace().getAddress(offset);
+        if (offset < 0x4000 || offset >= 0x8000) {
+            return address;
         }
-        var block = program.getMemory().getBlock("rom" + bank);
-        return block != null && block.isOverlay() ? block.getStart().getAddressSpace().getAddress(offset) : null;
+        var block = bank == 0 ? null : program.getMemory().getBlock("rom" + bank);
+        if (block != null && block.isOverlay()) {
+            return block.getStart().getAddressSpace().getAddress(offset);
+        }
+        // unbanked ROMs map $4000-$7FFF in the default space
+        return program.getMemory().contains(address) ? address : null;
     }
 }
