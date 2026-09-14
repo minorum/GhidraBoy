@@ -98,7 +98,7 @@ public final class GameBoyUtils {
         addHwData(program, "NR41", as.getAddress(0xff20), u8);
         addHwData(program, "NR42", as.getAddress(0xff21), DataTypes.NRX2);
         addHwData(program, "NR43", as.getAddress(0xff22), DataTypes.NR43);
-        addHwData(program, "NR44", as.getAddress(0xff23), DataTypes.NRX4);
+        addHwData(program, "NR44", as.getAddress(0xff23), DataTypes.NR44);
         addHwData(program, "NR50", as.getAddress(0xff24), DataTypes.NR50);
         addHwData(program, "NR51", as.getAddress(0xff25), DataTypes.NR51);
         addHwData(program, "NR52", as.getAddress(0xff26), DataTypes.NR52);

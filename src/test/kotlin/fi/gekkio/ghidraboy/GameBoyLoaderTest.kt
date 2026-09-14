@@ -223,19 +223,34 @@ class GameBoyLoaderTest : IntegrationTest() {
                 0xff11L to "nrx1",
                 0xff12L to "nrx2",
                 0xff14L to "nrx4",
+                0xff16L to "nrx1",
+                0xff17L to "nrx2",
+                0xff19L to "nrx4",
                 0xff1aL to "nr30",
                 0xff1cL to "nr32",
+                0xff1eL to "nrx4",
+                0xff21L to "nrx2",
                 0xff22L to "nr43",
+                0xff23L to "nr44",
                 0xff24L to "nr50",
                 0xff25L to "nr51",
                 0xff26L to "nr52",
                 0xff40L to "lcdc",
                 0xff41L to "stat",
                 0xff47L to "palette",
+                0xff48L to "palette",
                 0xff49L to "palette",
                 0xffffL to "interrupts",
             )
-        val cgbOnly = mapOf(0xff4dL to "key1", 0xff4fL to "vbk", 0xff56L to "rp", 0xff68L to "palette_index", 0xff70L to "svbk")
+        val cgbOnly =
+            mapOf(
+                0xff4dL to "key1",
+                0xff4fL to "vbk",
+                0xff56L to "rp",
+                0xff68L to "palette_index",
+                0xff6aL to "palette_index",
+                0xff70L to "svbk",
+            )
 
         fun types(
             program: Program,

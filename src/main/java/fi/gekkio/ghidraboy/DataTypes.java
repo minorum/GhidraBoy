@@ -52,6 +52,7 @@ public final class DataTypes {
     public static final Enum NR30;
     public static final Structure NR32;
     public static final Structure NR43;
+    public static final Structure NR44;
     public static final Structure NR50;
     public static final Enum NR51;
     public static final Enum NR52;
@@ -176,6 +177,7 @@ public final class DataTypes {
         NRX4 = bitfields("nrx4", "period_high:3", "unused:3", "length_enable", "trigger");
         NR32 = bitfields("nr32", "unused:5", "output_level:2", "unused_7");
         NR43 = bitfields("nr43", "divider:3", "width_7bit", "shift:4");
+        NR44 = bitfields("nr44", "unused:6", "length_enable", "trigger");
         NR50 = bitfields("nr50", "right_volume:3", "vin_right", "left_volume:3", "vin_left");
         PALETTE = bitfields("palette", "color0:2", "color1:2", "color2:2", "color3:2");
         VBK = bitfields("vbk", "bank", "unused:7");
@@ -207,7 +209,7 @@ public final class DataTypes {
 
     public static void addAll(DataTypeManager m) {
         var types = new DataType[]{LOGO, CGB_FLAG, TITLE_BLOCK_OLD, TITLE_BLOCK_NEW, TITLE_BLOCK, SGB_FLAG, CART_TYPE, ROM_SIZE, RAM_SIZE, REGION, HEADER, LCDC, STAT, INTERRUPTS,
-                P1, SC, TAC, NR10, NRX1, NRX2, NRX4, NR30, NR32, NR43, NR50, NR51, NR52, PALETTE, KEY1, VBK, RP, PALETTE_INDEX, SVBK};
+                P1, SC, TAC, NR10, NRX1, NRX2, NRX4, NR30, NR32, NR43, NR44, NR50, NR51, NR52, PALETTE, KEY1, VBK, RP, PALETTE_INDEX, SVBK};
         var c = m.createCategory(PATH);
         Arrays.stream(types).forEach(d -> c.addDataType(d, DataTypeConflictHandler.DEFAULT_HANDLER));
     }
