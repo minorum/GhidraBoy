@@ -33,12 +33,10 @@ class GhidraApplication : Extension {
                 if (initialized) return
                 val layout =
                     object : GhidraApplicationLayout() {
+                        // replaces a GhidraBoy module installed under the Ghidra root, e.g. by a distro package
                         override fun findGhidraModules(): MutableMap<String, GModule> =
-                            mutableMapOf(
-                                "GhidraBoy" to
-                                    GModule(applicationRootDirs, ResourceFile("./")),
-                            ).apply {
-                                putAll(super.findGhidraModules())
+                            super.findGhidraModules().toMutableMap().apply {
+                                put("GhidraBoy", GModule(applicationRootDirs, ResourceFile("./")))
                             }
 
                         // skip installed extensions that could shadow this module
