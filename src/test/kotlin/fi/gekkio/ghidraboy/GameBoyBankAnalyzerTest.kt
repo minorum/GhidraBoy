@@ -714,6 +714,69 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `code copied to HRAM by an inline loop is disassembled at its RAM address`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD HL,$0700; LD DE,$FF80; LD C,4; copy loop; CALL $FF80; RET
+                hex("21 00 07 11 80 ff 0e 04 2a 12 13 0d 20 fa cd 80 ff c9").copyInto(rom, 0x0600)
+                // LD A,($C001); RET
+                hex("fa 01 c0 c9").copyInto(rom, 0x0700)
+            },
+        ) { program ->
+            val copy = program.addressFactory.getAddressSpace("hram_code_ff80")?.getAddress(0xff80)
+            assertNotNull(copy)
+            assertEquals(setOf(copy), program.refs(0x060e, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+            assertNotNull(program.listing.getInstructionAt(copy))
+            assertNotNull(program.functionManager.getFunctionAt(copy))
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                val results = decompiler.decompileFunction(program.functionManager.getFunctionAt(program.addr(0x0600)), 10, TaskMonitor.DUMMY)
+                val c = results.decompiledFunction?.c
+                assertTrue(c != null && c.contains("hram_code_ff80") && !c.contains("halt_baddata"), "${results.errorMessage}\n$c")
+            } finally {
+                decompiler.dispose()
+            }
+        }
+
+    @Test
+    fun `jump into code copied to WRAM by a helper is a tail call into the copy`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD HL,$0700; LD DE,$DCA8; LD BC,4; CALL copy; JP $DCA8
+                hex("21 00 07 11 a8 dc 01 04 00 cd 73 0e c3 a8 dc").copyInto(rom, 0x0600)
+                hex("2a 12 13 0b 79 b0 20 f8 c9").copyInto(rom, 0x0e73)
+                hex("fa 01 c0 c9").copyInto(rom, 0x0700)
+            },
+        ) { program ->
+            val copy = program.addressFactory.getAddressSpace("wram_code_dca8")?.getAddress(0xdca8)
+            assertNotNull(copy)
+            assertEquals(setOf(copy), program.refs(0x060c, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+            assertEquals(FlowOverride.CALL_RETURN, program.listing.getInstructionAt(program.addr(0x060c)).flowOverride)
+            assertNotNull(program.functionManager.getFunctionAt(copy))
+        }
+
+    @Test
+    fun `copy with a computed length maps no code`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD HL,$0700; LD DE,$FF80; LD C,A; copy loop; CALL $FF80; RET
+                hex("21 00 07 11 80 ff 4f 2a 12 13 0d 20 fa cd 80 ff c9").copyInto(rom, 0x0600)
+            },
+        ) { program ->
+            assertTrue(program.memory.blocks.none { it.name.contains("_code_") })
+        }
+
+    @Test
     fun `unguarded JP HL jump table`() =
         analyze("", "") { program ->
             assertEquals(setOf(program.addr(0x0318), program.addr(0x031c)), program.refs(0x030e, RefType.COMPUTED_JUMP))

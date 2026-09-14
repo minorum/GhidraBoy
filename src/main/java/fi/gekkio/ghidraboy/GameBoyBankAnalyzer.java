@@ -20,7 +20,9 @@ import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.framework.options.Options;
+import ghidra.framework.store.LockException;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.data.ByteDataType;
@@ -33,6 +35,7 @@ import ghidra.program.model.listing.FlowOverride;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryAccessException;
+import ghidra.program.model.mem.MemoryConflictException;
 import ghidra.program.model.pcode.PcodeOp;
 import ghidra.program.model.pcode.Varnode;
 import ghidra.program.model.symbol.RefType;
@@ -43,6 +46,7 @@ import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -106,15 +110,17 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         var register = BankRegister.of(program);
         var banks = BankRegister.romBanks(program);
         var candidates = new ArrayList<Address>();
+        var disassemble = new AddressSet();
+        var functions = new AddressSet();
         for (var instr : program.getListing().getInstructions(set, true)) {
+            monitor.checkCancelled();
+            codeCopy(program, instr, disassemble, functions, log);
             var flowType = instr.getFlowType();
             if ((flowType.isCall() || flowType.isJump()) && instr.getFlows().length == 1) {
                 candidates.add(instr.getAddress());
             }
         }
 
-        var disassemble = new AddressSet();
-        var functions = new AddressSet();
         for (var address : candidates) {
             monitor.checkCancelled();
             // earlier fixups may have cleared it
@@ -124,12 +130,15 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             }
             var isCall = instr.getFlowType().isCall();
             var target = instr.getFlows()[0].getOffset();
+            var copy = target >= 0xc000 ? copiedCode(program, target) : null;
             if (isCall && farCallDispatchers.contains(target)) {
                 farCall(program, instr, banks, disassemble, functions, monitor, log);
             } else if (isCall && jumpTableDispatchers.contains(target)) {
                 jumpTable(program, instr, disassemble, monitor, log);
             } else if (trackWrites && register != null && target >= 0x4000 && target < 0x8000) {
                 bankSwitch(program, instr, register, banks, disassemble, functions);
+            } else if (copy != null) {
+                callInto(program, instr, copy, disassemble, functions);
             } else if (!isCall && inUninitializedCode(program, instr.getFlows()[0])) {
                 // routines copied to RAM at runtime: the decompiler cannot branch into memory without instructions
                 instr.setFlowOverride(FlowOverride.CALL_RETURN);
@@ -201,6 +210,10 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         if (target == null) {
             return;
         }
+        callInto(program, instr, target, disassemble, functions);
+    }
+
+    private static void callInto(Program program, Instruction instr, Address target, AddressSet disassemble, AddressSet functions) {
         // a far JP is a tail call: the decompiler cannot branch into another address space
         if (!instr.getFlowType().isCall()) {
             instr.setFlowOverride(FlowOverride.CALL_RETURN);
@@ -215,6 +228,129 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         }
         disassemble.add(target);
         functions.add(target);
+    }
+
+    // LD A,(HL+); LD (DE),A; INC DE; then DEC C; JR NZ or DEC BC; LD A,C/B; OR B/C; JR NZ
+    private static final byte[] COPY_BODY = {0x2a, 0x12, 0x13};
+    private static final byte[] COUNT_C = {0x0d, 0x20, (byte) 0xfa};
+    private static final byte[][] COUNT_BC = {{0x0b, 0x79, (byte) 0xb0, 0x20, (byte) 0xf8}, {0x0b, 0x78, (byte) 0xb1, 0x20, (byte) 0xf8}};
+
+    // ROM routines copied to WRAM or HRAM by a constant HL -> DE loop, inline or called
+    private static void codeCopy(Program program, Instruction instr, AddressSet disassemble, AddressSet functions, MessageLog log) {
+        var flowType = instr.getFlowType();
+        var isCall = flowType.isCall() && !flowType.isConditional() && instr.getFlows().length == 1;
+        var loop = isCall ? instr.getFlows()[0] : instr.getAddress();
+        var bytes = new byte[8];
+        try {
+            if (program.getMemory().getBytes(loop, bytes) < 6) {
+                return;
+            }
+        } catch (MemoryAccessException e) {
+            return;
+        }
+        if (!Arrays.equals(bytes, 0, 3, COPY_BODY, 0, 3)) {
+            return;
+        }
+        var byC = Arrays.equals(bytes, 3, 6, COUNT_C, 0, 3);
+        if (!byC && !Arrays.equals(bytes, 3, 8, COUNT_BC[0], 0, 5) && !Arrays.equals(bytes, 3, 8, COUNT_BC[1], 0, 5)) {
+            return;
+        }
+        var values = loads(program, instr, loop, loop.add(byC ? 5 : 7));
+        var hl = values.get("HL");
+        var de = values.get("DE");
+        var b = values.get("B");
+        var c = values.get("C");
+        if (hl == null || de == null || c == null || (!byC && b == null)) {
+            return;
+        }
+        var length = byC ? (c == 0 ? 0x100 : c) : b << 8 | c;
+        var hram = de >= 0xff80 && de + length <= 0xffff;
+        if (length == 0 || !hram && !(de >= 0xc000 && de + length <= 0xe000) || hl + length > (hl < 0x4000 ? 0x4000 : 0x8000)) {
+            return;
+        }
+        var source = sameBankAddress(program, instr.getAddress(), hl);
+        var start = program.getAddressFactory().getDefaultAddressSpace().getAddress(de);
+        var memory = program.getMemory();
+        if (source == null || !memory.getBlock(source).isInitialized() || copiedCode(program, de) != null) {
+            return;
+        }
+        try {
+            var block = memory.createByteMappedBlock((hram ? "hram" : "wram") + "_code_" + Integer.toHexString(de), start, source, length, true);
+            block.setPermissions(true, false, true);
+            block.setComment("Code copied from " + source);
+        } catch (LockException | MemoryConflictException | AddressOverflowException | IllegalArgumentException e) {
+            log.appendMsg(NAME, "Could not map code copied to " + start + ": " + e.getMessage());
+            return;
+        }
+        // calls and jumps seen before the copy
+        var refs = program.getReferenceManager();
+        var sites = new ArrayList<Address>();
+        for (var to : refs.getReferenceDestinationIterator(new AddressSet(start, start.add(length - 1)), true)) {
+            for (var ref : refs.getReferencesTo(to)) {
+                if (ref.getReferenceType().isFlow()) {
+                    sites.add(ref.getFromAddress());
+                }
+            }
+        }
+        for (var site : sites) {
+            var from = program.getListing().getInstructionAt(site);
+            if (from != null && from.getFlows().length == 1 && !hasOwnReference(program, site)) {
+                callInto(program, from, copiedCode(program, from.getFlows()[0].getOffset()), disassemble, functions);
+            }
+        }
+    }
+
+    // constant HL, DE, B and C loaded before start in its fall-through chain; null when written otherwise
+    private static Map<String, Integer> loads(Program program, Instruction start, Address loopStart, Address loopEnd) {
+        var listing = program.getListing();
+        var refs = program.getReferenceManager();
+        var values = new HashMap<String, Integer>();
+        var cur = start;
+        for (int i = 0; i < SCAN_LIMIT && values.size() < 4; i++) {
+            // another path may reach cur with other values
+            for (var ref : refs.getReferencesTo(cur.getAddress())) {
+                var from = ref.getFromAddress();
+                if (!from.getAddressSpace().equals(loopStart.getAddressSpace()) || from.compareTo(loopStart) < 0 || from.compareTo(loopEnd) > 0) {
+                    return values;
+                }
+            }
+            var prev = listing.getInstructionBefore(cur.getAddress());
+            if (prev == null || !cur.getAddress().equals(prev.getFallThrough()) || prev.getFlowType().isCall()) {
+                return values;
+            }
+            int op;
+            int word;
+            try {
+                op = prev.getByte(0) & 0xff;
+                word = prev.getLength() == 3 ? (prev.getByte(1) & 0xff) | (prev.getByte(2) & 0xff) << 8 : prev.getLength() == 2 ? prev.getByte(1) & 0xff : 0;
+            } catch (MemoryAccessException e) {
+                return values;
+            }
+            for (var name : List.of("HL", "DE", "B", "C")) {
+                if (values.containsKey(name) || !GameBoyJumpTableAnalyzer.writes(prev, program.getRegister(name))) {
+                    continue;
+                }
+                values.put(name, switch (name) {
+                    case "HL" -> op == 0x21 ? word : null;
+                    case "DE" -> op == 0x11 ? word : null;
+                    case "B" -> op == 0x01 ? word >> 8 : op == 0x06 ? word : null;
+                    default -> op == 0x01 ? word & 0xff : op == 0x0e ? word : null;
+                });
+            }
+            cur = prev;
+        }
+        return values;
+    }
+
+    // overlay address of a copied routine covering a default-space RAM offset
+    private static Address copiedCode(Program program, long offset) {
+        for (var block : program.getMemory().getBlocks()) {
+            if (block.isOverlay() && block.isMapped() && block.getName().contains("_code_")
+                    && block.getStart().getOffset() <= offset && offset <= block.getEnd().getOffset()) {
+                return block.getStart().getAddressSpace().getAddress(offset);
+            }
+        }
+        return null;
     }
 
     private static Integer findBank(Program program, Instruction instr, BankRegister register, int banks) {
