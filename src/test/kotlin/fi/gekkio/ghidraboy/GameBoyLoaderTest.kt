@@ -13,6 +13,7 @@
 // limitations under the License.
 package fi.gekkio.ghidraboy
 
+import ghidra.app.cmd.disassemble.DisassembleCommand
 import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.importer.ProgramLoader
 import ghidra.program.model.listing.Program
@@ -140,6 +141,32 @@ class GameBoyLoaderTest : IntegrationTest() {
                     .mappedRange
                     .get()
             assertEquals("wram1", program.memory.getBlock(mapped.minAddress).name)
+        }
+    }
+
+    @Test
+    fun `CGB absolute VRAM and switchable WRAM references hit default-space blocks`() {
+        // LD A,($D9A1); LD ($8000),A; JR -2
+        val bytes = rom(0x8000, mapOf(0x0143 to 0x80))
+        listOf(0xfa, 0xa1, 0xd9, 0xea, 0x00, 0x80, 0x18, 0xfe)
+            .map { it.toByte() }
+            .toByteArray()
+            .copyInto(bytes, 0x0150)
+        load(bytes) { program ->
+            val space = program.addressFactory.defaultAddressSpace
+            program.withTransaction {
+                DisassembleCommand(space.getAddress(0x0150), null, true).applyTo(program)
+            }
+            val targets =
+                listOf(0x0150L, 0x0153L).flatMap { from ->
+                    program.referenceManager.getReferencesFrom(space.getAddress(from)).map { it.toAddress }
+                }
+            assertEquals(listOf(space.getAddress(0xd9a1), space.getAddress(0x8000)), targets)
+            assertEquals(listOf("wram1", "vram0"), targets.map { program.memory.getBlock(it)?.name })
+            assertEquals(
+                listOf("wram2", "wram7", "vram1"),
+                listOf("wram2", "wram7", "vram1").filter { program.memory.getBlock(it)?.isOverlay == true },
+            )
         }
     }
 
