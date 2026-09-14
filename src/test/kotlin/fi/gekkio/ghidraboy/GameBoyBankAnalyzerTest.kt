@@ -183,8 +183,43 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `call after a bank switch helper resolves into the bank`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0180; CALL $4000; RET
+                hex("cd 80 01 cd 00 40 c9").copyInto(rom, 0x0008)
+                // rst10: LD A,3; CALL $01A0; CALL $4000; RET
+                hex("3e 03 cd a0 01 cd 00 40 c9").copyInto(rom, 0x0010)
+                // PUSH AF; LD A,1; JR $018C / DI; LD ($2000),A; EI; POP AF; RET
+                hex("f5 3e 01 18 07").copyInto(rom, 0x0180)
+                hex("f3 ea 00 20 fb f1 c9").copyInto(rom, 0x018c)
+                // LD ($2000),A; RET
+                hex("ea 00 20 c9").copyInto(rom, 0x01a0)
+            },
+        ) { program ->
+            assertEquals(setOf(program.bankAddr(1, 0x4000)), program.refs(0x000b, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+            assertEquals(setOf(program.bankAddr(3, 0x4000)), program.refs(0x0015, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+        }
+
+    @Test
     fun `upper bank bits select banks past the low register range`() =
         analyze("", "", mbc1Rom(0x100000)) { program ->
+            assertEquals(setOf(program.bankAddr(0x25, 0x4000)), program.refs(0x015a, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+        }
+
+    @Test
+    fun `upper bank bits survive a helper that writes only the low register`() =
+        // LD A,1; LD ($4000),A; LD A,5; CALL $01A0; CALL $4000; JR -2 / LD ($2000),A; RET
+        analyze(
+            "",
+            "",
+            mbc1Rom(0x100000).also { rom ->
+                hex("3e 01 ea 00 40 3e 05 cd a0 01 cd 00 40 18 fe").copyInto(rom, 0x0150)
+                hex("ea 00 20 c9").copyInto(rom, 0x01a0)
+            },
+        ) { program ->
             assertEquals(setOf(program.bankAddr(0x25, 0x4000)), program.refs(0x015a, RefType.CALL_OVERRIDE_UNCONDITIONAL))
         }
 
