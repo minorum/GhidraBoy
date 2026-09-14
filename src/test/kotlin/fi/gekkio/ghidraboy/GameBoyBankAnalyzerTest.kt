@@ -216,15 +216,12 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
     fun `JP HL recovery keeps user computed references`() =
         analyze("", "") { program ->
             val from = program.addr(0x030e)
-            val id = program.startTransaction("refs")
-            try {
+            program.withTransaction {
                 program.referenceManager.apply {
                     addMemoryReference(from, program.addr(0x0001), RefType.COMPUTED_JUMP, SourceType.ANALYSIS, 0)
                     addMemoryReference(from, program.addr(0x7fff), RefType.COMPUTED_JUMP, SourceType.USER_DEFINED, 0)
                 }
                 GameBoyJumpTableAnalyzer().added(program, AddressSet(from), TaskMonitor.DUMMY, MessageLog())
-            } finally {
-                program.endTransaction(id, true)
             }
             assertTrue(program.addr(0x7fff) in program.refs(0x030e, RefType.COMPUTED_JUMP))
         }

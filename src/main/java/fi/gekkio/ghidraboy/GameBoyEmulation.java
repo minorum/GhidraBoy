@@ -108,23 +108,26 @@ public final class GameBoyEmulation {
         }
     }
 
-    static byte[] bankBytes(Program program, int bank) {
+    static IntFunction<byte[]> bankBytes(Program program) {
         var memory = program.getMemory();
-        var banks = 1;
-        while (memory.getBlock("rom" + banks) != null) {
-            banks++;
+        var count = 1;
+        while (memory.getBlock("rom" + count) != null) {
+            count++;
         }
-        // MBC wraps bank numbers past the ROM size
-        var block = memory.getBlock("rom" + bank % banks);
-        if (block == null) {
-            return null;
-        }
-        var bytes = new byte[(int) block.getSize()];
-        try {
-            block.getBytes(block.getStart(), bytes);
-        } catch (MemoryAccessException e) {
-            return null;
-        }
-        return bytes;
+        var banks = count;
+        return bank -> {
+            // MBC wraps bank numbers past the ROM size
+            var block = memory.getBlock("rom" + bank % banks);
+            if (block == null) {
+                return null;
+            }
+            var bytes = new byte[(int) block.getSize()];
+            try {
+                block.getBytes(block.getStart(), bytes);
+            } catch (MemoryAccessException e) {
+                return null;
+            }
+            return bytes;
+        };
     }
 }

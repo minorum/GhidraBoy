@@ -39,7 +39,7 @@ public class GameBoyEmulatorFactory implements EmulatorFactory {
             var program = findProgram(data.getPlatform().getTrace(), data.getSnap());
             var register = program != null ? BankRegister.of(program) : null;
             if (register != null) {
-                callbacks = new ComposedPcodeEmulationCallbacks<>(callbacks, new GameBoyEmulation.BankSwitching(register, bank -> GameBoyEmulation.bankBytes(program, bank)));
+                callbacks = new ComposedPcodeEmulationCallbacks<>(callbacks, new GameBoyEmulation.BankSwitching(register, GameBoyEmulation.bankBytes(program)));
             }
         }
         return new GameBoyEmulation.Emulator(access.getLanguage(), callbacks);
