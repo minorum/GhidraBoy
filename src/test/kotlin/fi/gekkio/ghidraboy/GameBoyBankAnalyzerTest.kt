@@ -229,7 +229,8 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                 assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
                 val results = decompiler.decompileFunction(caller, 10, TaskMonitor.DUMMY)
                 val c = results.decompiledFunction?.c
-                assertTrue(results.decompileCompleted() && c != null && c.contains("FUN_rom3__4010()"), "${results.errorMessage}\n$c")
+                // arguments depend on how the register write decompiles
+                assertTrue(results.decompileCompleted() && c != null && c.contains("FUN_rom3__4010("), "${results.errorMessage}\n$c")
             } finally {
                 decompiler.dispose()
             }
