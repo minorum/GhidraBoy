@@ -130,6 +130,10 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
                 jumpTable(program, instr, disassemble, monitor, log);
             } else if (trackWrites && register != null && target >= 0x4000 && target < 0x8000) {
                 bankSwitch(program, instr, register, banks, disassemble, functions);
+            } else if (!isCall && inUninitializedCode(program, instr.getFlows()[0])) {
+                // routines copied to RAM at runtime: the decompiler cannot branch into memory without instructions
+                instr.setFlowOverride(FlowOverride.CALL_RETURN);
+                functions.add(instr.getFlows()[0]);
             }
         }
 
@@ -169,6 +173,11 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             }
         }
         return false;
+    }
+
+    private static boolean inUninitializedCode(Program program, Address address) {
+        var block = program.getMemory().getBlock(address);
+        return block != null && block.isExecute() && !block.isInitialized();
     }
 
     private static boolean hasOwnReference(Program program, Address from) {

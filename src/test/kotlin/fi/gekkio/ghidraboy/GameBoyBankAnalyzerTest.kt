@@ -675,6 +675,34 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `jumps into RAM routines decompile as tail calls`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0600; RET
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD A,($CF27); OR A; JP Z,$DEB9; LD ($C001),A; JP $DBD7
+                hex("fa 27 cf b7 ca b9 de ea 01 c0 c3 d7 db").copyInto(rom, 0x0600)
+            },
+        ) { program ->
+            val function = program.functionManager.getFunctionAt(program.addr(0x0600))
+            assertNotNull(function)
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                val results = decompiler.decompileFunction(function, 10, TaskMonitor.DUMMY)
+                val c = results.decompiledFunction?.c
+                assertTrue(
+                    c != null && !c.contains("halt_baddata") && c.contains("deb9") && c.contains("dbd7") && c.contains("DAT_c001"),
+                    "${results.errorMessage}\n$c",
+                )
+            } finally {
+                decompiler.dispose()
+            }
+        }
+
+    @Test
     fun `unguarded JP HL jump table`() =
         analyze("", "") { program ->
             assertEquals(setOf(program.addr(0x0318), program.addr(0x031c)), program.refs(0x030e, RefType.COMPUTED_JUMP))
