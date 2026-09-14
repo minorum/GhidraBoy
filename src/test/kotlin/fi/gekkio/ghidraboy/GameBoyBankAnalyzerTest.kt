@@ -204,6 +204,38 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `jump after bank register write is disassembled in the bank`() =
+        // rst08: CALL $0600; RET / $0600: LD A,3; LD ($2000),A; JP $4010
+        analyze(
+            "",
+            "",
+            rom().also {
+                hex("cd 00 06 c9").copyInto(it, 0x0008)
+                hex("3e 03 ea 00 20 c3 10 40").copyInto(it, 0x0600)
+            },
+        ) { program ->
+            assertEquals(setOf(program.bankAddr(3, 0x4010)), program.refs(0x0605, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+            assertEquals(FlowOverride.CALL_RETURN, program.listing.getInstructionAt(program.addr(0x0605)).flowOverride)
+            assertNotNull(program.functionManager.getFunctionAt(program.bankAddr(3, 0x4010)))
+            assertNotNull(program.listing.getInstructionAt(program.bankAddr(3, 0x4010)))
+            assertTrue(
+                program.bookmarkManager.getBookmarks(program.addr(0x0605)).none { it.comment.contains("non-existing memory") },
+                program.bookmarkManager.getBookmarks(program.addr(0x0605)).joinToString { it.comment },
+            )
+            val caller = program.functionManager.getFunctionContaining(program.addr(0x0605))
+            assertNotNull(caller)
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                val results = decompiler.decompileFunction(caller, 10, TaskMonitor.DUMMY)
+                val c = results.decompiledFunction?.c
+                assertTrue(results.decompileCompleted() && c != null && c.contains("FUN_rom3__4010()"), "${results.errorMessage}\n$c")
+            } finally {
+                decompiler.dispose()
+            }
+        }
+
+    @Test
     fun `upper bank bits select banks past the low register range`() =
         analyze("", "", mbc1Rom(0x100000)) { program ->
             assertEquals(setOf(program.bankAddr(0x25, 0x4000)), program.refs(0x015a, RefType.CALL_OVERRIDE_UNCONDITIONAL))
