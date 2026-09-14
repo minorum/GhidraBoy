@@ -323,9 +323,22 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                 (0x0620..0x0650 step 0x10).forEach { hex("cd 00 02 10 40 03 c9").copyInto(rom, it) }
             },
         ) { program ->
+            // inline bytes are data, not code the decompiler could walk through
+            listOf(0x0603L, 0x060eL).forEach { offset ->
+                assertEquals(
+                    "word",
+                    program.listing
+                        .getDataAt(program.addr(offset))
+                        ?.dataType
+                        ?.name,
+                )
+            }
             // call sites followed by data must not make the dispatcher or the callee non-returning
-            assertFalse(program.functionManager.getFunctionAt(program.addr(0x0200))?.hasNoReturn() == true)
-            assertFalse(program.functionManager.getFunctionAt(program.bankAddr(3, 0x4010))?.hasNoReturn() == true)
+            listOf(program.addr(0x0200), program.bankAddr(3, 0x4010)).forEach { entry ->
+                val callee = program.functionManager.getFunctionAt(entry)
+                assertNotNull(callee, entry.toString())
+                assertFalse(callee.hasNoReturn(), entry.toString())
+            }
             val function = program.functionManager.getFunctionAt(program.addr(0x0600))
             assertNotNull(function)
             val decompiler = DecompInterface()
