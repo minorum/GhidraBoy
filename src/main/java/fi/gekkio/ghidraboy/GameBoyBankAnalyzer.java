@@ -162,12 +162,20 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         if (target == null) {
             return;
         }
-        var isCall = instr.getFlowType().isCall();
-        addPrimaryReference(program, instr.getAddress(), target, isCall ? RefType.CALL_OVERRIDE_UNCONDITIONAL : RefType.JUMP_OVERRIDE_UNCONDITIONAL);
-        disassemble.add(target);
-        if (isCall) {
-            functions.add(target);
+        // a far JP is a tail call: the decompiler cannot branch into another address space
+        if (!instr.getFlowType().isCall()) {
+            instr.setFlowOverride(FlowOverride.CALL_RETURN);
         }
+        addPrimaryReference(program, instr.getAddress(), target, RefType.CALL_OVERRIDE_UNCONDITIONAL);
+        // the default-space flow error no longer applies
+        var bookmarks = program.getBookmarkManager();
+        for (var bookmark : bookmarks.getBookmarks(instr.getAddress())) {
+            if (bookmark.getComment().contains("non-existing memory")) {
+                bookmarks.removeBookmark(bookmark);
+            }
+        }
+        disassemble.add(target);
+        functions.add(target);
     }
 
     private static Integer findBank(Program program, Instruction instr, BankRegister register, int banks) {
