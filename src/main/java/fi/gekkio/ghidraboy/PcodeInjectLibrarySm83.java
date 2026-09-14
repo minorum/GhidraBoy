@@ -79,7 +79,8 @@ public class PcodeInjectLibrarySm83 extends PcodeInjectLibrary {
             ops.add(op(at, ops, PcodeOp.INT_ADD, sp, constant(af, 2, sp.getSize()), sp));
             Varnode outside = null;
             PcodeOp guard = null;
-            if (cases > 0) {
+            // 256 entries cover every 8-bit index
+            if (cases > 0 && cases < MAX_ENTRIES) {
                 outside = unique.next(1);
                 ops.add(op(at, ops, PcodeOp.INT_LESSEQUAL, constant(af, cases, 1), a, outside));
                 guard = op(at, ops, PcodeOp.CBRANCH, null, outside, null);

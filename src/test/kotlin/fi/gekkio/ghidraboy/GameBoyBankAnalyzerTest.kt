@@ -580,6 +580,39 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `inline jump table injection with 256 entries needs no bound`() =
+        analyze(
+            "",
+            "0000",
+            rom().also { rom ->
+                // rst08: CALL $0800; RET
+                hex("cd 00 08 c9").copyInto(rom, 0x0008)
+                // LD A,($C800); RST 00; dw $0700 x 256
+                hex("fa 00 c8 c7").copyInto(rom, 0x0800)
+                ByteArray(512) { if (it % 2 == 0) 0x00 else 0x07 }.copyInto(rom, 0x0804)
+                hex("c9").copyInto(rom, 0x0700)
+            },
+        ) { program ->
+            assertEquals(
+                "word",
+                program.listing
+                    .getDataAt(program.addr(0x0a02))
+                    ?.dataType
+                    ?.name,
+            )
+            val library = program.compilerSpec.pcodeInjectLibrary
+            val payload = library.getPayload(InjectPayload.CALLFIXUP_TYPE, GameBoyJumpTableAnalyzer.INLINE_TABLE_FIXUP)
+            val context =
+                library.buildInjectContext().apply {
+                    baseAddr = program.addr(0x0803)
+                    nextAddr = program.addr(0x0804)
+                    callAddr = program.addr(0x0000)
+                }
+            // every 8-bit index is in range
+            assertTrue(payload.getPcode(program, context).none { it.opcode == PcodeOp.INT_LESSEQUAL })
+        }
+
+    @Test
     fun `function jumping into another function's inline jump table decompiles the marked cases`() =
         analyze(
             "",
