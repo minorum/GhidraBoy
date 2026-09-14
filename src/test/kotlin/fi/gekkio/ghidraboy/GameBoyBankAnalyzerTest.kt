@@ -131,6 +131,7 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         farCalls: String,
         jumpTables: String,
         bytes: ByteArray = rom(),
+        setup: (Program) -> Unit = {},
         check: (Program) -> Unit,
     ) = ProgramLoader
         .builder()
@@ -143,6 +144,7 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             try {
                 val id = program.startTransaction("analysis")
                 try {
+                    setup(program)
                     program.getOptions(Program.ANALYSIS_PROPERTIES).getOptions(GameBoyBankAnalyzer.NAME).apply {
                         setString(GameBoyBankAnalyzer.OPT_FAR_CALLS, farCalls)
                         setString(GameBoyBankAnalyzer.OPT_JUMP_TABLES, jumpTables)
@@ -820,6 +822,46 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             assertEquals("__interrupt", handler.callingConventionName)
             assertEquals(0, handler.parameterCount)
             assertEquals("void", handler.returnType.name)
+        }
+
+    @Test
+    fun `code disassembled later joins the function that jumps into it`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0620; RET
+                hex("cd 20 06 c9").copyInto(rom, 0x0008)
+                // OR A; JP Z,$0640; RET / $0640: LD A,1; LD ($C001),A; RET
+                hex("b7 ca 40 06 c9").copyInto(rom, 0x0620)
+                hex("3e 01 ea 01 c0 c9").copyInto(rom, 0x0640)
+            },
+            setup = { program ->
+                // the jump target is data until a later fixup clears it
+                ghidra.program.model.data.DataUtilities.createData(
+                    program,
+                    program.addr(0x0640),
+                    ghidra.program.model.data
+                        .ArrayDataType(ByteDataType.dataType, 6, 1),
+                    -1,
+                    false,
+                    ghidra.program.model.data.DataUtilities.ClearDataMode.CLEAR_ALL_UNDEFINED_CONFLICT_DATA,
+                )
+            },
+        ) { program ->
+            val manager = AutoAnalysisManager.getAnalysisManager(program)
+            assertEquals(null, program.listing.getInstructionAt(program.addr(0x0640)))
+            program.withTransaction {
+                program.listing.clearCodeUnits(program.addr(0x0640), program.addr(0x0645), false)
+                manager.disassemble(AddressSet(program.addr(0x0640)))
+                manager.startAnalysis(TaskMonitor.DUMMY)
+                program.flushEvents()
+                manager.startAnalysis(TaskMonitor.DUMMY)
+            }
+            val function = program.functionManager.getFunctionAt(program.addr(0x0620))
+            assertNotNull(function)
+            assertNotNull(program.listing.getInstructionAt(program.addr(0x0645)))
+            assertEquals(function, program.functionManager.getFunctionContaining(program.addr(0x0645)))
         }
 
     @Test
