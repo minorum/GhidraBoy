@@ -717,6 +717,45 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `helpers that return are not non-returning when callers fall into the next routine`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0500; RET
+                hex("cd 00 05 c9").copyInto(rom, 0x0008)
+                // CALL $0600; CALL $0603; CALL $0606; CALL $0609; CALL $070B; CALL $0620; CALL $0630; RET
+                hex("cd 00 06 cd 03 06 cd 06 06 cd 09 06 cd 0b 07 cd 20 06 cd 30 06 c9").copyInto(rom, 0x0500)
+                // three routines ending in CALL $0700 that fall into the next routine; RET
+                hex("cd 00 07 cd 00 07 cd 00 07 c9").copyInto(rom, 0x0600)
+                // CALL $0700; LD A,5; LD ($C000),A; RET
+                hex("cd 00 07 3e 05 ea 00 c0 c9").copyInto(rom, 0x0620)
+                // LD A,1; JP $0700
+                hex("3e 01 c3 00 07").copyInto(rom, 0x0630)
+                // PUSH AF; LD A,0; JR $070B / DI; AND 1; LDH ($4F),A; EI; POP AF; RET
+                hex("f5 3e 00 18 06 00 00 00 00 00 00").copyInto(rom, 0x0700)
+                hex("f3 e6 01 e0 4f fb f1 c9").copyInto(rom, 0x070b)
+            },
+        ) { program ->
+            fun noReturn(offset: Long) = program.functionManager.getFunctionAt(program.addr(offset))?.hasNoReturn()
+            assertEquals(listOf(false, false, false), listOf(0x0700L, 0x070bL, 0x0630L).map { noReturn(it) })
+            assertTrue(
+                program.bookmarkManager.getBookmarks(program.addr(0x0700)).none { it.category.contains("Non-Returning") },
+                program.bookmarkManager.getBookmarks(program.addr(0x0700)).joinToString { "${it.category}: ${it.comment}" },
+            )
+            val caller = program.functionManager.getFunctionAt(program.addr(0x0620))
+            assertNotNull(caller)
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                val c = decompiler.decompileFunction(caller, 10, TaskMonitor.DUMMY).decompiledFunction?.c
+                assertTrue(c != null && c.contains("DAT_c000 = 5;") && !c.contains("does not return"), c)
+            } finally {
+                decompiler.dispose()
+            }
+        }
+
+    @Test
     fun `dispatchers are not assumed without options`() =
         analyze("", "") { program ->
             assertTrue(program.refs(0x0158, RefType.CALL_OVERRIDE_UNCONDITIONAL).isEmpty())

@@ -17,6 +17,8 @@
 <processor_spec>
   <properties>
     <property key="pcodeInjectLibraryClass" value="fi.gekkio.ghidraboy.PcodeInjectLibrarySm83"/>
+    <!-- calls falling into the next routine are not evidence of non-returning callees -->
+    <property key="Analyzers.Non-Returning Functions - Discovered" value="false"/>
   </properties>
   <programcounter register="PC"/>
   <!-- I/O registers whose value changes without CPU writes -->
