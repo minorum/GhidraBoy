@@ -77,8 +77,8 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
             monitor.checkCancelled();
             var dispatcherAddress = inlineTableDispatcher(program, instr);
             if (dispatcherAddress != null) {
-                var targets = GameBoyBankAnalyzer.tableTargets(program, instr.getAddress(), instr.getMaxAddress().next(),
-                        GameBoyBankAnalyzer.indexBound(program, instr));
+                // the bank analyzer's cases; recomputing disagrees once a case jumps back to the call
+                var targets = markedTargets(program, instr.getAddress());
                 var dispatcher = program.getFunctionManager().getFunctionAt(dispatcherAddress);
                 if (!targets.isEmpty() && dispatcher != null) {
                     dispatcher.setCallFixup(INLINE_TABLE_FIXUP);
@@ -121,6 +121,16 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
             CreateFunctionCmd.fixupFunctionBody(program, function, monitor);
         }
         return true;
+    }
+
+    private static List<Address> markedTargets(Program program, Address from) {
+        var targets = new ArrayList<Address>();
+        for (var ref : program.getReferenceManager().getReferencesFrom(from)) {
+            if (ref.getReferenceType() == RefType.COMPUTED_JUMP && ref.getSource() == SourceType.ANALYSIS) {
+                targets.add(ref.getToAddress());
+            }
+        }
+        return targets;
     }
 
     // called dispatcher of a call the bank analyzer marked with its table targets

@@ -476,8 +476,8 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             targets.add(target);
             overlaps.add(overlap);
         }
-        // fall-through code under a target must start inside the table
-        for (int i = 0; i < targets.size(); i++) {
+        // unless the index bound confirms every entry, fall-through code under a target must start inside the table
+        for (int i = 0; i < targets.size() && targets.size() < limit; i++) {
             var start = overlaps.get(i);
             if (start != null && start >= table.getOffset() + 2L * targets.size()) {
                 targets.subList(i, targets.size()).clear();
