@@ -22,6 +22,7 @@ import ghidra.app.util.importer.ProgramLoader
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSet
 import ghidra.program.model.data.ByteDataType
+import ghidra.program.model.listing.BookmarkType
 import ghidra.program.model.listing.FlowOverride
 import ghidra.program.model.listing.Function.FunctionUpdateType
 import ghidra.program.model.listing.ParameterImpl
@@ -553,6 +554,13 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             listOf(0x1f4bL, 0x1f59L).forEach {
                 assertEquals(setOf(program.bankAddr(3, 0x6b18)), program.refs(it, RefType.CALL_OVERRIDE_UNCONDITIONAL), it.toString(16))
             }
+            // the retried case leaves no conflict bookmark behind
+            assertTrue(
+                program.bookmarkManager
+                    .getBookmarkAddresses(BookmarkType.ERROR)
+                    .intersectRange(program.addr(0x1f44), program.addr(0x1f5f))
+                    .isEmpty,
+            )
         }
 
     @Test
