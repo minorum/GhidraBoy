@@ -507,6 +507,37 @@ class DecompilerTest : IntegrationTest() {
         )
 
     @Test
+    fun `default convention clobbers flags across calls`() {
+        assembleFunction(address(0x0100), "RET", name = "helper")
+        assertDecompiled(
+            assembleFunction(
+                address(0x0000),
+                """
+                XOR A
+                CALL 0x0100
+                LD A, 0x00
+                RET NC
+                LD A, 0x01
+                RET
+                """.trimIndent(),
+                name = "caller",
+                returnParam = returnParameter(u8, register("A")),
+            ),
+            """
+            byte caller(void)
+            {
+                byte extraout_F;
+                helper();
+                if (!(bool)(extraout_F >> 4 & 1)) {
+                    return 0;
+                }
+                return 1;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
     fun `callee-saved convention keeps registers across calls`() =
         assertDecompiled(
             callerOfHelper("__asm_saved"),

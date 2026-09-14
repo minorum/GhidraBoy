@@ -65,6 +65,9 @@
       <unaffected>
         <register name="SP"/>
       </unaffected>
+      <killedbycall>
+        <register name="F"/>
+      </killedbycall>
     </prototype>
   </default_proto>
   <prototype name="__asm_a" extrapop="2" stackshift="2" strategy="register">
@@ -81,6 +84,9 @@
     <unaffected>
       <register name="SP"/>
     </unaffected>
+    <killedbycall>
+      <register name="F"/>
+    </killedbycall>
   </prototype>
   <prototype name="__asm_hl" extrapop="2" stackshift="2" strategy="register">
     <input>
@@ -96,6 +102,9 @@
     <unaffected>
       <register name="SP"/>
     </unaffected>
+    <killedbycall>
+      <register name="F"/>
+    </killedbycall>
   </prototype>
   <!-- status returned in flags, e.g. carry -->
   <prototype name="__asm_f" extrapop="2" stackshift="2" strategy="register">
@@ -126,6 +135,9 @@
     <unaffected>
       <register name="SP"/>
     </unaffected>
+    <killedbycall>
+      <register name="F"/>
+    </killedbycall>
   </prototype>
   <!-- callee preserves BC, DE and HL -->
   <prototype name="__asm_saved" extrapop="2" stackshift="2" strategy="register">
@@ -145,6 +157,9 @@
       <register name="DE"/>
       <register name="HL"/>
     </unaffected>
+    <killedbycall>
+      <register name="F"/>
+    </killedbycall>
   </prototype>
   <callotherfixup targetop="bank_ram">
     <pcode dynamic="true">
