@@ -63,7 +63,9 @@ public class GameBoyRamBankAnalyzer extends AbstractAnalyzer {
         var refs = program.getReferenceManager();
         var ram = program.getAddressFactory().getDefaultAddressSpace();
         for (var ref : refs.getReferencesFrom(instr.getAddress())) {
-            if (!ref.isMemoryReference() || ref.getSource() == SourceType.USER_DEFINED) {
+            var from = instr.getAddress().getAddressSpace();
+            // code inside a banked overlay references its own bank
+            if (!ref.isMemoryReference() || ref.getSource() == SourceType.USER_DEFINED || (from.isOverlaySpace() && from.equals(ref.getToAddress().getAddressSpace()))) {
                 continue;
             }
             var offset = ref.getToAddress().getOffset();
@@ -89,7 +91,9 @@ public class GameBoyRamBankAnalyzer extends AbstractAnalyzer {
             }
             refs.delete(ref);
             var bankRef = refs.addMemoryReference(ref.getFromAddress(), target, ref.getReferenceType(), SourceType.ANALYSIS, ref.getOperandIndex());
-            refs.setPrimary(bankRef, ref.isPrimary());
+            if (ref.isPrimary()) {
+                refs.setPrimary(bankRef, true);
+            }
         }
     }
 }

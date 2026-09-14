@@ -268,6 +268,23 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `re-added default-space RAM reference keeps the bank reference primary`() =
+        analyze("", "", cgbRom()) { program ->
+            program.withTransaction {
+                program.referenceManager.addMemoryReference(
+                    program.addr(0x0154),
+                    program.addr(0xd9a1),
+                    RefType.READ,
+                    SourceType.ANALYSIS,
+                    1,
+                )
+                GameBoyRamBankAnalyzer().added(program, AddressSet(program.addr(0x0154)), TaskMonitor.DUMMY, MessageLog())
+            }
+            val refs = program.referenceManager.getReferencesFrom(program.addr(0x0154)).filter { it.referenceType.isData }
+            assertEquals(listOf("wram3::d9a1" to true), refs.map { it.toAddress.toString(true) to it.isPrimary })
+        }
+
+    @Test
     fun `RAM bank analyzer only applies to CGB programs`() {
         analyze("", "") { program -> assertFalse(GameBoyRamBankAnalyzer().canAnalyze(program)) }
         analyze("", "", cgbRom()) { program -> assertTrue(GameBoyRamBankAnalyzer().canAnalyze(program)) }
