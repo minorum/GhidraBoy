@@ -39,9 +39,28 @@ public final class DataTypes {
     public static final Enum RAM_SIZE;
     public static final Enum REGION;
     public static final Structure HEADER;
-    public static final Structure LCDC;
+    public static final Enum LCDC;
     public static final Structure STAT;
-    public static final Structure INTERRUPTS;
+    public static final Enum INTERRUPTS;
+    public static final Enum P1;
+    public static final Enum SC;
+    public static final Enum TAC;
+    public static final Structure NR10;
+    public static final Structure NRX1;
+    public static final Structure NRX2;
+    public static final Structure NRX4;
+    public static final Enum NR30;
+    public static final Structure NR32;
+    public static final Structure NR43;
+    public static final Structure NR50;
+    public static final Enum NR51;
+    public static final Enum NR52;
+    public static final Structure PALETTE;
+    public static final Enum KEY1;
+    public static final Structure VBK;
+    public static final Enum RP;
+    public static final Structure PALETTE_INDEX;
+    public static final Structure SVBK;
 
     static {
         LOGO = new TypedefDataType(PATH, "logo", array(u8, 0x30));
@@ -135,10 +154,41 @@ public final class DataTypes {
         HEADER.add(u8, "header_checksum", null);
         HEADER.add(u16, "global_checksum", null);
 
-        // bitfields from bit 0 upwards
-        LCDC = bitfields("lcdc", "bg_window_enable", "obj_enable", "obj_size", "bg_tilemap", "bg_window_tiledata", "window_enable", "window_tilemap", "lcd_enable");
+        // flag registers: constant writes decompile as ORed hardware.inc names
+        LCDC = flags("lcdc", "LCDCF_BGON", 0x01, "LCDCF_OBJON", 0x02, "LCDCF_OBJ16", 0x04, "LCDCF_BG9C00", 0x08, "LCDCF_BG8800", 0x10,
+                "LCDCF_WINON", 0x20, "LCDCF_WIN9C00", 0x40, "LCDCF_ON", 0x80);
+        INTERRUPTS = flags("interrupts", "IEF_VBLANK", 0x01, "IEF_STAT", 0x02, "IEF_TIMER", 0x04, "IEF_SERIAL", 0x08, "IEF_JOYPAD", 0x10);
+        P1 = flags("p1", "P1F_0", 0x01, "P1F_1", 0x02, "P1F_2", 0x04, "P1F_3", 0x08, "P1F_4", 0x10, "P1F_5", 0x20);
+        SC = flags("sc", "SCF_SOURCE", 0x01, "SCF_SPEED", 0x02, "SCF_START", 0x80);
+        TAC = flags("tac", "TACF_262KHZ", 0x01, "TACF_65KHZ", 0x02, "TACF_16KHZ", 0x03, "TACF_START", 0x04);
+        NR30 = flags("nr30", "AUD3ENA_ON", 0x80);
+        NR51 = flags("nr51", "AUDTERM_1_RIGHT", 0x01, "AUDTERM_2_RIGHT", 0x02, "AUDTERM_3_RIGHT", 0x04, "AUDTERM_4_RIGHT", 0x08,
+                "AUDTERM_1_LEFT", 0x10, "AUDTERM_2_LEFT", 0x20, "AUDTERM_3_LEFT", 0x40, "AUDTERM_4_LEFT", 0x80);
+        NR52 = flags("nr52", "AUDENA_CH1_ON", 0x01, "AUDENA_CH2_ON", 0x02, "AUDENA_CH3_ON", 0x04, "AUDENA_CH4_ON", 0x08, "AUDENA_ON", 0x80);
+        KEY1 = flags("key1", "KEY1F_PREPARE", 0x01, "KEY1F_DBLSPEED", 0x80);
+        RP = flags("rp", "RPF_WRITE_HI", 0x01, "RPF_DATAIN", 0x02, "RPF_ENREAD", 0xc0);
+
+        // registers with multi-bit values: bitfields from bit 0 upwards
         STAT = bitfields("stat", "mode:2", "lyc_equal", "mode0_interrupt", "mode1_interrupt", "mode2_interrupt", "lyc_interrupt", "unused");
-        INTERRUPTS = bitfields("interrupts", "vblank", "stat", "timer", "serial", "joypad", "unused:3");
+        NR10 = bitfields("nr10", "sweep_step:3", "sweep_decrease", "sweep_pace:3", "unused");
+        NRX1 = bitfields("nrx1", "length:6", "duty:2");
+        NRX2 = bitfields("nrx2", "envelope_pace:3", "envelope_increase", "volume:4");
+        NRX4 = bitfields("nrx4", "period_high:3", "unused:3", "length_enable", "trigger");
+        NR32 = bitfields("nr32", "unused:5", "output_level:2", "unused_7");
+        NR43 = bitfields("nr43", "divider:3", "width_7bit", "shift:4");
+        NR50 = bitfields("nr50", "right_volume:3", "vin_right", "left_volume:3", "vin_left");
+        PALETTE = bitfields("palette", "color0:2", "color1:2", "color2:2", "color3:2");
+        VBK = bitfields("vbk", "bank", "unused:7");
+        PALETTE_INDEX = bitfields("palette_index", "index:6", "unused", "auto_increment");
+        SVBK = bitfields("svbk", "bank:3", "unused:5");
+    }
+
+    private static Enum flags(String name, Object... namesAndValues) {
+        var e = new EnumDataType(PATH, name, 1);
+        for (int i = 0; i < namesAndValues.length; i += 2) {
+            e.add((String) namesAndValues[i], ((Number) namesAndValues[i + 1]).longValue());
+        }
+        return e;
     }
 
     private static Structure bitfields(String name, String... fields) {
@@ -156,7 +206,8 @@ public final class DataTypes {
     }
 
     public static void addAll(DataTypeManager m) {
-        var types = new DataType[]{LOGO, CGB_FLAG, TITLE_BLOCK_OLD, TITLE_BLOCK_NEW, TITLE_BLOCK, SGB_FLAG, CART_TYPE, ROM_SIZE, RAM_SIZE, REGION, HEADER, LCDC, STAT, INTERRUPTS};
+        var types = new DataType[]{LOGO, CGB_FLAG, TITLE_BLOCK_OLD, TITLE_BLOCK_NEW, TITLE_BLOCK, SGB_FLAG, CART_TYPE, ROM_SIZE, RAM_SIZE, REGION, HEADER, LCDC, STAT, INTERRUPTS,
+                P1, SC, TAC, NR10, NRX1, NRX2, NRX4, NR30, NR32, NR43, NR50, NR51, NR52, PALETTE, KEY1, VBK, RP, PALETTE_INDEX, SVBK};
         var c = m.createCategory(PATH);
         Arrays.stream(types).forEach(d -> c.addDataType(d, DataTypeConflictHandler.DEFAULT_HANDLER));
     }
