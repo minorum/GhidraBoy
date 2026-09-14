@@ -1083,6 +1083,95 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             }
         }
 
+    private fun arguments(option: String): (Program) -> Unit =
+        { program ->
+            program
+                .getOptions(
+                    Program.ANALYSIS_PROPERTIES,
+                ).getOptions(GameBoyBankAnalyzer.NAME)
+                .setString(GameBoyBankAnalyzer.OPT_ARGUMENTS, option)
+        }
+
+    @Test
+    fun `fixed-length inline arguments after a call are data`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // CALL $0700 / db $D3,$00; LD A,1; RET
+                hex("cd 00 07 d3 00 3e 01 c9").copyInto(rom, 0x0600)
+                // dispatcher: POP HL; INC HL; INC HL; PUSH HL; RET
+                hex("e1 23 23 e5 c9").copyInto(rom, 0x0700)
+            },
+            setup = arguments("0700:2"),
+        ) { program ->
+            assertEquals(program.addr(0x0605), program.listing.getInstructionAt(program.addr(0x0600)).fallThrough)
+            assertEquals(
+                "byte[2]",
+                program.listing
+                    .getDataAt(program.addr(0x0603))
+                    ?.dataType
+                    ?.name,
+            )
+            assertNotNull(program.listing.getInstructionAt(program.addr(0x0605)))
+            val function = program.functionManager.getFunctionAt(program.addr(0x0600))
+            assertNotNull(function)
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                val results = decompiler.decompileFunction(function, 10, TaskMonitor.DUMMY)
+                val c = results.decompiledFunction?.c
+                assertTrue(c != null && c.contains("FUN_0700()") && !c.contains("baddata"), "${results.errorMessage}\n$c")
+            } finally {
+                decompiler.dispose()
+            }
+        }
+
+    // RST $18 jumps to a dispatcher skipping bytes up to $50: POP HL; LD A,(HL+); CP $50; JR NZ; PUSH HL; RET
+    private fun terminatedRom(arguments: String): ByteArray =
+        rom().also { rom ->
+            hex("cd 00 06 c9").copyInto(rom, 0x0008)
+            hex("c3 00 08").copyInto(rom, 0x0018)
+            hex("e1 2a fe 50 20 fb e5 c9").copyInto(rom, 0x0800)
+            hex("df $arguments c9").copyInto(rom, 0x0600)
+        }
+
+    @Test
+    fun `terminated inline arguments after an RST are data`() =
+        analyze("", "", terminatedRom("41 42 50"), setup = arguments("0018:t50")) { program ->
+            assertEquals(program.addr(0x0604), program.listing.getInstructionAt(program.addr(0x0600)).fallThrough)
+            assertEquals(
+                "byte[3]",
+                program.listing
+                    .getDataAt(program.addr(0x0601))
+                    ?.dataType
+                    ?.name,
+            )
+            assertEquals("RET", program.listing.getInstructionAt(program.addr(0x0604))?.mnemonicString)
+        }
+
+    @Test
+    fun `inline arguments without a terminator leave the call site alone`() =
+        analyze("", "", terminatedRom("41 42"), setup = arguments("0018:t50")) { program ->
+            assertEquals(program.addr(0x0601), program.listing.getInstructionAt(program.addr(0x0600)).fallThrough)
+            assertTrue(program.listing.getDataAt(program.addr(0x0601)) == null)
+        }
+
+    @Test
+    fun `inline argument dispatchers parse`() {
+        val rejected = mutableListOf<String>()
+        assertEquals(
+            mapOf(0x0150L to GameBoyBankAnalyzer.Arguments(2, -1), 0x0018L to GameBoyBankAnalyzer.Arguments(0, 0x50)),
+            GameBoyBankAnalyzer.parseArguments(" 0150:2, \$0018:t50 ") { rejected.add(it) },
+        )
+        assertEquals(
+            emptyMap<Long, GameBoyBankAnalyzer.Arguments>(),
+            GameBoyBankAnalyzer.parseArguments("0150 0150:x 0150:0") { rejected.add(it) },
+        )
+        assertEquals(listOf("0150", "0150:x", "0150:0"), rejected)
+    }
+
     @Test
     fun `dispatchers are not assumed without options`() =
         analyze("", "") { program ->
