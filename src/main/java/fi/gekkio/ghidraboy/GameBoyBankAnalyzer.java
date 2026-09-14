@@ -216,6 +216,10 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
                 if (helper == null) {
                     break;
                 }
+                if (helper == HelperWrite.NONE) {
+                    cur = prev;
+                    continue;
+                }
                 if (!helper.entryA()) {
                     return new Write(helper.address(), helper.value());
                 }
@@ -248,6 +252,8 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
 
     // last register write a called helper makes; entryA when it writes the caller's A
     record HelperWrite(long address, Integer value, boolean entryA) {
+        // helper returns without writing the register
+        static final HelperWrite NONE = new HelperWrite(-1, null, false);
     }
 
     // ponytail: straight-line helpers only, no calls or conditional branches inside
@@ -284,7 +290,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
                 fold(op, constants, copiesOfA, a);
             }
             if (flow.isTerminal()) {
-                return result;
+                return result != null ? result : HelperWrite.NONE;
             }
             var next = flow.isJump() ? cur.getFlows()[0] : cur.getFallThrough();
             if (next == null) {

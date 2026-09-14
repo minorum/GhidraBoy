@@ -206,6 +206,20 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `upper bank bits survive a helper that writes only the low register`() =
+        // LD A,1; LD ($4000),A; LD A,5; CALL $01A0; CALL $4000; JR -2 / LD ($2000),A; RET
+        analyze(
+            "",
+            "",
+            mbc1Rom(0x100000).also { rom ->
+                hex("3e 01 ea 00 40 3e 05 cd a0 01 cd 00 40 18 fe").copyInto(rom, 0x0150)
+                hex("ea 00 20 c9").copyInto(rom, 0x01a0)
+            },
+        ) { program ->
+            assertEquals(setOf(program.bankAddr(0x25, 0x4000)), program.refs(0x015a, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+        }
+
+    @Test
     fun `upper bank bits wrap on small ROMs`() =
         analyze("", "", mbc1Rom(0x10000)) { program ->
             assertEquals(setOf(program.bankAddr(1, 0x4000)), program.refs(0x015a, RefType.CALL_OVERRIDE_UNCONDITIONAL))
