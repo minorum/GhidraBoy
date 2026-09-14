@@ -123,7 +123,7 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
         return true;
     }
 
-    private static List<Address> markedTargets(Program program, Address from) {
+    static List<Address> markedTargets(Program program, Address from) {
         var targets = new ArrayList<Address>();
         for (var ref : program.getReferenceManager().getReferencesFrom(from)) {
             if (ref.getReferenceType() == RefType.COMPUTED_JUMP && ref.getSource() == SourceType.ANALYSIS) {
