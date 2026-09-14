@@ -345,6 +345,56 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `decompiler continues after an inline far call`() =
+        analyze(
+            "0200",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0600; RET
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // dispatcher: POP HL; LD E,(HL); INC HL; LD D,(HL); INC HL; LD A,(HL+); PUSH HL; LD ($2000),A; PUSH DE; RET
+                hex("e1 5e 23 56 23 2a e5 ea 00 20 d5 c9").copyInto(rom, 0x0200)
+                // CALL $0200 / db $10,$40,$03; LD A,4; LD ($D00F),A; CALL $0200 / db $00,$40,$02; RET
+                hex("cd 00 02 10 40 03 3e 04 ea 0f d0 cd 00 02 00 40 02 c9").copyInto(rom, 0x0600)
+                // more far call sites: rst10/rst18 call $0620-$0650, each CALL $0200 / db $10,$40,$03; RET
+                hex("cd 20 06 cd 30 06 c9").copyInto(rom, 0x0010)
+                hex("cd 40 06 cd 50 06 c9").copyInto(rom, 0x0018)
+                (0x0620..0x0650 step 0x10).forEach { hex("cd 00 02 10 40 03 c9").copyInto(rom, it) }
+            },
+        ) { program ->
+            // inline bytes are data, not code the decompiler could walk through
+            listOf(0x0603L, 0x060eL).forEach { offset ->
+                assertEquals(
+                    "word",
+                    program.listing
+                        .getDataAt(program.addr(offset))
+                        ?.dataType
+                        ?.name,
+                )
+            }
+            // call sites followed by data must not make the dispatcher or the callee non-returning
+            listOf(program.addr(0x0200), program.bankAddr(3, 0x4010)).forEach { entry ->
+                val callee = program.functionManager.getFunctionAt(entry)
+                assertNotNull(callee, entry.toString())
+                assertFalse(callee.hasNoReturn(), entry.toString())
+            }
+            val function = program.functionManager.getFunctionAt(program.addr(0x0600))
+            assertNotNull(function)
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                val results = decompiler.decompileFunction(function, 10, TaskMonitor.DUMMY)
+                val c = results.decompiledFunction?.c
+                assertTrue(
+                    c != null && c.contains("rom3__4010") && c.contains("DAT_d00f = 4;") && c.contains("rom2__4000"),
+                    "${results.errorMessage}\n$c",
+                )
+            } finally {
+                decompiler.dispose()
+            }
+        }
+
+    @Test
     fun `inline jump table dispatcher`() =
         analyze("0200", "0000") { program ->
             val rst = program.listing.getInstructionAt(program.addr(0x015e))
