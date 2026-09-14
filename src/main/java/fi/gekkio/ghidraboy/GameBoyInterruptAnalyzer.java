@@ -19,11 +19,17 @@ import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.data.VoidDataType;
+import ghidra.program.model.listing.Function.FunctionUpdateType;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.listing.ReturnParameterImpl;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.util.exception.CancelledException;
+import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
+
+import java.util.List;
 
 public class GameBoyInterruptAnalyzer extends AbstractAnalyzer {
     static final String NAME = "Game Boy Interrupt Handlers";
@@ -49,8 +55,9 @@ public class GameBoyInterruptAnalyzer extends AbstractAnalyzer {
                 continue;
             }
             try {
-                function.setCallingConvention(CONVENTION);
-            } catch (InvalidInputException e) {
+                function.updateFunction(CONVENTION, new ReturnParameterImpl(VoidDataType.dataType, program), List.of(),
+                        FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, false, SourceType.ANALYSIS);
+            } catch (InvalidInputException | DuplicateNameException e) {
                 log.appendMsg(NAME, "Could not set " + CONVENTION + " on " + function.getName() + ": " + e.getMessage());
             }
         }

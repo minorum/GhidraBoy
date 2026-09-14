@@ -21,8 +21,12 @@ import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.importer.ProgramLoader
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSet
+import ghidra.program.model.data.ByteDataType
 import ghidra.program.model.listing.FlowOverride
+import ghidra.program.model.listing.Function.FunctionUpdateType
+import ghidra.program.model.listing.ParameterImpl
 import ghidra.program.model.listing.Program
+import ghidra.program.model.listing.ReturnParameterImpl
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.util.task.TaskMonitor
@@ -402,6 +406,22 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             assertEquals("__interrupt", convention(0x0058))
             assertEquals("__interrupt", convention(0x0500))
             assertFalse(convention(0x0008) == "__interrupt")
+            // re-analysis drops a signature found by other analyzers
+            val handler = program.functionManager.getFunctionAt(program.addr(0x0500))
+            program.withTransaction {
+                handler.updateFunction(
+                    "__asm",
+                    ReturnParameterImpl(ByteDataType.dataType, program),
+                    listOf(ParameterImpl("a", ByteDataType.dataType, program)),
+                    FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
+                    false,
+                    SourceType.ANALYSIS,
+                )
+                GameBoyInterruptAnalyzer().added(program, handler.body, TaskMonitor.DUMMY, MessageLog())
+            }
+            assertEquals("__interrupt", handler.callingConventionName)
+            assertEquals(0, handler.parameterCount)
+            assertEquals("void", handler.returnType.name)
         }
 
     @Test
