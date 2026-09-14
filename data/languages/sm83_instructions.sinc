@@ -71,6 +71,10 @@
   A = Mem8;
 }
 
+:LD Mem8, A is op0_8=0xea & A; Mem8 & imm16_hi1=0 {
+  mbc_write(&:2 Mem8, A);
+}
+
 :LD Mem8, A is op0_8=0xea & A; Mem8 {
   Mem8 = A;
 }

@@ -17,6 +17,8 @@ import ghidra.pcode.emu.PcodeEmulationCallbacks;
 import ghidra.pcode.emu.PcodeEmulator;
 import ghidra.pcode.emu.PcodeThread;
 import ghidra.pcode.exec.AnnotatedPcodeUseropLibrary;
+import ghidra.pcode.exec.PcodeArithmetic.Purpose;
+import ghidra.pcode.exec.PcodeExecutorState;
 import ghidra.pcode.exec.PcodeExecutorStatePiece;
 import ghidra.pcode.exec.PcodeExecutorStatePiece.Reason;
 import ghidra.pcode.exec.PcodeUseropLibrary;
@@ -54,6 +56,13 @@ public final class GameBoyEmulation {
         @PcodeUserop
         public byte[] bank_ram(byte[] value) {
             return value;
+        }
+
+        // store to the MBC register, so bank switching callbacks see the write
+        @PcodeUserop
+        public void mbc_write(@OpState PcodeExecutorState<byte[]> state, byte[] address, byte[] value) {
+            var offset = state.getArithmetic().toLong(address, Purpose.STORE);
+            state.setVar(state.getLanguage().getDefaultSpace(), offset, 1, true, value);
         }
     }
 

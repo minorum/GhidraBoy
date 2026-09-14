@@ -235,7 +235,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
                     if (op.getOpcode() == PcodeOp.STORE && constant(op.getInput(1), constants) == null && !isRegister(op.getInput(1), sp)) {
                         return new Write(-1, null);
                     }
-                    var written = addressWrittenFrom(op, a, constants, copiesOfA);
+                    var written = addressWrittenFrom(program, op, a, constants, copiesOfA);
                     if (written != null && target.test(written)) {
                         pending = written;
                     }
@@ -279,7 +279,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
                 if (op.getOpcode() == PcodeOp.STORE && constant(op.getInput(1), constants) == null && !isRegister(op.getInput(1), sp)) {
                     return null;
                 }
-                var written = addressWrittenFrom(op, a, constants, copiesOfA);
+                var written = addressWrittenFrom(program, op, a, constants, copiesOfA);
                 if (written != null && target.test(written)) {
                     result = new HelperWrite(written, value, entryA);
                 }
@@ -334,9 +334,14 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         return varnode.isConstant() ? Long.valueOf(varnode.getOffset()) : constants.get(varnode);
     }
 
-    // LD (nn),A and LDH (n),A are a STORE through a constant or a COPY into a memory varnode
-    private static Long addressWrittenFrom(PcodeOp op, ghidra.program.model.lang.Register register, Map<Varnode, Long> constants, Set<Varnode> copiesOfA) {
+    // LD (nn),A and LDH (n),A are a STORE through a constant, a COPY into a memory varnode, or mbc_write(nn, A)
+    private static Long addressWrittenFrom(Program program, PcodeOp op, ghidra.program.model.lang.Register register, Map<Varnode, Long> constants, Set<Varnode> copiesOfA) {
         if (op.getOpcode() == PcodeOp.STORE && (isRegister(op.getInput(2), register) || copiesOfA.contains(op.getInput(2)))) {
+            return constant(op.getInput(1), constants);
+        }
+        if (op.getOpcode() == PcodeOp.CALLOTHER && op.getNumInputs() == 3
+                && "mbc_write".equals(program.getLanguage().getUserDefinedOpName((int) op.getInput(0).getOffset()))
+                && (isRegister(op.getInput(2), register) || copiesOfA.contains(op.getInput(2)))) {
             return constant(op.getInput(1), constants);
         }
         if (op.getOpcode() == PcodeOp.COPY && op.getOutput() != null && op.getOutput().isAddress() && isRegister(op.getInput(0), register)) {
