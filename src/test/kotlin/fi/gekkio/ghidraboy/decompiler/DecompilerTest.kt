@@ -737,6 +737,95 @@ class DecompilerTest : IntegrationTest() {
         )
     }
 
+    @Test
+    fun `16-bit shifts through carry on a register pair`() {
+        listOf(
+            Triple("srl16", "SRL B\nRR C\nSRL B\nRR C\nSRL B\nRR C\nSRL B\nRR C\nRET", "return value >> 4;"),
+            Triple("sla16", "SLA C\nRL B\nSLA C\nRL B\nRET", "return value << 2;"),
+            Triple("sra16", "SRA B\nRR C\nSRA B\nRR C\nRET", "return (int)value >> 2;"),
+        ).forEachIndexed { i, (name, code, body) ->
+            val f =
+                assembleFunction(
+                    address(0x0100L * (i + 1)),
+                    code,
+                    name = name,
+                    params = listOf(parameter("value", u16, register("BC"))),
+                    returnParam = returnParameter(u16, register("BC")),
+                )
+            assertDecompiled(
+                f,
+                """
+                word $name(word value)
+                {
+                    $body
+                }
+                """.trimIndent(),
+            )
+        }
+    }
+
+    @Test
+    fun `RLCA decompiles as a rotate`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                RLCA
+                RET
+                """.trimIndent(),
+                name = "rotl",
+                params = listOf(parameter("value", u8, register("A"))),
+                returnParam = returnParameter(u8, register("A")),
+            )
+        assertDecompiled(
+            f,
+            """
+            byte rotl(byte value)
+            {
+                return value << 1 | value >> 7;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `16-bit compare through SUB and SBC`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LD A, E
+                SUB C
+                LD A, D
+                SBC B
+                JR C, 0x0009
+                LD A, 0x00
+                RET
+                LD A, 0x01
+                RET
+                """.trimIndent(),
+                name = "less16",
+                params = listOf(parameter("a", u16, register("DE")), parameter("b", u16, register("BC"))),
+                returnParam = returnParameter(u8, register("A")),
+            )
+        assertDecompiled(
+            f,
+            """
+            byte less16(word a,word b)
+            {
+                byte bVar1;
+                byte bVar2;
+                bVar2 = (byte)(a >> 8);
+                bVar1 = (byte)(b >> 8);
+                if (bVar1 <= bVar2 && (bVar2 != bVar1 || (byte)b <= (byte)a)) {
+                    return 0;
+                }
+                return 1;
+            }
+            """.trimIndent(),
+        )
+    }
+
     @BeforeAll
     override fun beforeAll() {
         super.beforeAll()

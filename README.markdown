@@ -54,8 +54,12 @@ You can then find a built extension .zip in the `build/distributions` directory.
 
 ## Open questions / problems
 
-- Decompiler output is difficult to read if certain instructions are used (e.g.
-  rotates). The "Game Boy JP (HL) Jump Tables" analyzer recovers
+- Decompiler output is difficult to read for some carry-chain idioms. 16-bit
+  shifts through carry on a register pair (`SRL B` / `RR C`) and single rotates
+  decompile as shifts, and a 16-bit `SUB` / `SBC` compare as a byte-wise
+  three-way comparison. These stay byte-level: an 8-bit value shifted into 16
+  bits through `A` (`SLA C` / `RLA`), 16-bit `ADD` / `ADC` (`CONCAT11` with
+  `CARRY1`) and chains of rotates. The "Game Boy JP (HL) Jump Tables" analyzer recovers
   `LD A,(HL+)` / `LD H,(HL)` / `LD L,A` / `JP HL` tables Ghidra's switch
   recovery misses; other pointer loads are not recognized
 - Default "ASM calling convention" assumes all registers can be inputs and/or

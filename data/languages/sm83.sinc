@@ -179,7 +179,7 @@ macro aluSbc(op8) {
   $(Z_flag) = (tmp == 0);
   $(N_flag) = 1;
   $(H_flag) = (((A & 0xf) - (x & 0xf) - cy) & 0x10) != 0;
-  $(C_flag) = (A < x) || ((A - x) < cy);
+  $(C_flag) = (A < x) || ((A == x) && (cy != 0));
   A = tmp;
 }
 

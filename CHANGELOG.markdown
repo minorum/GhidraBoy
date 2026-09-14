@@ -38,6 +38,8 @@
   `$8000-$9FFF` and `$D000-$DFFF` references hit mapped memory
 - Drop support for Ghidra 11.x
 - Build with Java 21 target
+- SBC carry is expressed as a comparison, so 16-bit `SUB` / `SBC` compares
+  decompile as a three-way byte comparison
 
 ### Fixed
 
