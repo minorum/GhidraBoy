@@ -146,6 +146,10 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
                 successors.addAll(List.of(instr.getFlows()));
             }
             for (var next : successors) {
+                // re-entering pushes the registers again after a return path popped them
+                if (next.equals(function.getEntryPoint())) {
+                    return false;
+                }
                 var known = depths.putIfAbsent(next, depth);
                 if (known == null) {
                     work.add(next);
@@ -212,9 +216,9 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
         return true;
     }
 
-    // PUSH/POP rr, LD SP,nn, INC/DEC SP, ADD SP,e, LD HL,SP+e, LD SP,HL
+    // PUSH/POP rr, LD SP,nn, INC/DEC SP, ADD SP,e, LD HL,SP+e, LD SP,HL, ADD HL,SP, LD (nn),SP
     private static boolean changesStack(int op) {
-        return (op & 0xcb) == 0xc1 || op == 0x31 || op == 0x33 || op == 0x3b || op == 0xe8 || op == 0xf8 || op == 0xf9;
+        return (op & 0xcb) == 0xc1 || op == 0x31 || op == 0x33 || op == 0x3b || op == 0xe8 || op == 0xf8 || op == 0xf9 || op == 0x39 || op == 0x08;
     }
 
     private static boolean isReturn(int op) {

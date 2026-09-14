@@ -935,11 +935,20 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                 hex("c5 d5 e5 b7 28 01 f5 e1 d1 c1 c9").copyInto(rom, 0x0960)
                 // PUSH BC; PUSH DE; PUSH HL; INC SP; DEC SP; POP HL; POP DE; POP BC; RET
                 hex("c5 d5 e5 33 3b e1 d1 c1 c9").copyInto(rom, 0x0980)
+                // rst20: CALL $09A0; CALL $09C0; RET / rst28: CALL $09E0; RET
+                hex("cd a0 09 cd c0 09 c9").copyInto(rom, 0x0020)
+                hex("cd e0 09 c9").copyInto(rom, 0x0028)
+                // PUSH BC; PUSH DE; PUSH HL; LD HL,$C000; DEC (HL); POP HL; POP DE; POP BC; RET Z; DEC B; JP $09A0
+                hex("c5 d5 e5 21 00 c0 35 e1 d1 c1 c8 05 c3 a0 09").copyInto(rom, 0x09a0)
+                // PUSH BC; PUSH DE; PUSH HL; LD HL,2; ADD HL,SP; LD (HL),0; INC HL; LD (HL),0; POP HL; POP DE; POP BC; RET
+                hex("c5 d5 e5 21 02 00 39 36 00 23 36 00 e1 d1 c1 c9").copyInto(rom, 0x09c0)
+                // PUSH BC; PUSH DE; PUSH HL; PUSH AF; POP HL; POP DE; POP BC; RET
+                hex("c5 d5 e5 f5 e1 d1 c1 c9").copyInto(rom, 0x09e0)
             },
         ) { program ->
             fun convention(offset: Long) = program.functionManager.getFunctionAt(program.addr(offset))?.callingConventionName
             assertEquals(listOf("__asm_saved", "__asm_saved", "__asm_saved"), listOf(0x0900L, 0x0920L, 0x0940L).map { convention(it) })
-            listOf(0x0960L, 0x0980L).forEach {
+            listOf(0x0960L, 0x0980L, 0x09a0L, 0x09c0L, 0x09e0L).forEach {
                 assertNotNull(program.functionManager.getFunctionAt(program.addr(it)))
                 assertFalse(convention(it) == "__asm_saved", it.toString(16))
             }
