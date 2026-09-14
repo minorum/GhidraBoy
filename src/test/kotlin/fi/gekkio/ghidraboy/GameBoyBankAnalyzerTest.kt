@@ -518,6 +518,44 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `far call in a case of a nested inline jump table is disassembled`() =
+        analyze(
+            "0200",
+            "0000",
+            rom().also { rom ->
+                // rst08: CALL $1EC5; RET
+                hex("cd c5 1e c9").copyInto(rom, 0x0008)
+                // LD A,($C800); RST 00; dw $1F3C, $1F74, $1F84
+                hex("fa 00 c8 c7 3c 1f 74 1f 84 1f").copyInto(rom, 0x1ec5)
+                // LD A,($C801); RST 00; dw $1F44, $1F52
+                // case 0: LD HL,$571F; LD A,$74; LD E,0; CALL $0200 / db $18,$6B,$03; RET
+                // case 1: LD HL,$5F2A; LD A,$74; LD E,0; CALL $0200 / db $18,$6B,$03; RET
+                // $1F74: CALL $0200 / db $BA,$5D,$08; CALL $0200 / db $80,$7A,$08; RET
+                // inline bytes before the $1F74 far calls decode as code up to JR NZ,$1F55 and JR NZ,$1F54
+                hex(
+                    """
+                    fa 01 c8 c7 44 1f 52 1f
+                    21 1f 57 3e 74 1e 00 cd 00 02 18 6b 03 c9
+                    21 2a 5f 3e 74 1e 00 cd 00 02 18 6b 03 c9
+                    cd 00 02 e2 6f 2d c9
+                    cd 00 02 00 40 08 c9
+                    c3 93 1e c3 93 1e
+                    cd 00 02 ba 5d 08 cd 00 02 80 7a 08 c9
+                    c3 93 1e
+                    cd 25 20 cd 98 20 c9
+                    """,
+                ).copyInto(rom, 0x1f3c)
+                listOf(0x1e93, 0x2025, 0x2098, 0xeb18).forEach { rom[it] = 0xc9.toByte() }
+            },
+        ) { program ->
+            assertEquals(setOf(program.addr(0x1f44), program.addr(0x1f52)), program.refs(0x1f3f, RefType.COMPUTED_JUMP))
+            listOf(0x1f52L, 0x1f59L, 0x1f5fL).forEach { assertNotNull(program.listing.getInstructionAt(program.addr(it)), it.toString(16)) }
+            listOf(0x1f4bL, 0x1f59L).forEach {
+                assertEquals(setOf(program.bankAddr(3, 0x6b18)), program.refs(it, RefType.CALL_OVERRIDE_UNCONDITIONAL), it.toString(16))
+            }
+        }
+
+    @Test
     fun `unguarded JP HL jump table`() =
         analyze("", "") { program ->
             assertEquals(setOf(program.addr(0x0318), program.addr(0x031c)), program.refs(0x030e, RefType.COMPUTED_JUMP))
