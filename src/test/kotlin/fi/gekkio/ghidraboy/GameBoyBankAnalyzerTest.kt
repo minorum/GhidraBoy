@@ -1084,6 +1084,36 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `callee-saved convention keeps inferred register arguments at call sites`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0A20; RET
+                hex("cd 20 0a c9").copyInto(rom, 0x0008)
+                // LD A,$FF; CALL $0A00; LD ($C001),A; RET
+                hex("3e ff cd 00 0a ea 01 c0 c9").copyInto(rom, 0x0a20)
+                // LD ($C839),A; PUSH BC; PUSH DE; PUSH HL; LD A,($C000); POP HL; POP DE; POP BC; RET
+                hex("ea 39 c8 c5 d5 e5 fa 00 c0 e1 d1 c1 c9").copyInto(rom, 0x0a00)
+            },
+        ) { program ->
+            val helper = program.functionManager.getFunctionAt(program.addr(0x0a00))
+            assertEquals("__asm_saved", helper?.callingConventionName)
+            assertEquals(SourceType.DEFAULT, helper?.signatureSource)
+            val caller = program.functionManager.getFunctionAt(program.addr(0x0a20))
+            assertNotNull(caller)
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                val results = decompiler.decompileFunction(caller, 10, TaskMonitor.DUMMY)
+                val c = results.decompiledFunction?.c
+                assertTrue(c != null && c.contains("FUN_0a00(0xff)"), "${results.errorMessage}\n$c")
+            } finally {
+                decompiler.dispose()
+            }
+        }
+
+    @Test
     fun `callee-saved inference rejects stack tricks, fall-through and imported signatures`() =
         analyze(
             "",
