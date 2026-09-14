@@ -99,6 +99,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
     @Override
     public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log) throws CancelledException {
         var register = BankRegister.of(program);
+        var banks = BankRegister.romBanks(program);
         var candidates = new ArrayList<Address>();
         for (var instr : program.getListing().getInstructions(set, true)) {
             var flowType = instr.getFlowType();
@@ -119,11 +120,11 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             var isCall = instr.getFlowType().isCall();
             var target = instr.getFlows()[0].getOffset();
             if (isCall && farCallDispatchers.contains(target)) {
-                farCall(program, instr, disassemble, functions, monitor, log);
+                farCall(program, instr, banks, disassemble, functions, monitor, log);
             } else if (isCall && jumpTableDispatchers.contains(target)) {
                 jumpTable(program, instr, disassemble, monitor, log);
             } else if (trackWrites && register != null && target >= 0x4000 && target < 0x8000) {
-                bankSwitch(program, instr, register, disassemble, functions);
+                bankSwitch(program, instr, register, banks, disassemble, functions);
             }
         }
 
@@ -146,15 +147,15 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         return false;
     }
 
-    private static void bankSwitch(Program program, Instruction instr, BankRegister register, AddressSet disassemble, AddressSet functions) {
+    private static void bankSwitch(Program program, Instruction instr, BankRegister register, int banks, AddressSet disassemble, AddressSet functions) {
         if (instr.getAddress().getAddressSpace().isOverlaySpace()) {
             return;
         }
-        var bank = findBank(program, instr, register);
+        var bank = findBank(program, instr, register, banks);
         if (bank == null) {
             return;
         }
-        var target = romAddress(program, instr.getAddress(), bank, (int) instr.getFlows()[0].getOffset());
+        var target = romAddress(program, instr.getAddress(), bank, (int) instr.getFlows()[0].getOffset(), banks);
         if (target == null) {
             return;
         }
@@ -167,37 +168,49 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
     }
 
     // ponytail: backward scan of the fall-through chain only, SymbolicPropogator if bank values come from memory or other blocks
-    private static Integer findBank(Program program, Instruction instr, BankRegister register) {
+    private static Integer findBank(Program program, Instruction instr, BankRegister register, int banks) {
         var a = program.getRegister("A");
         var listing = program.getListing();
         var refs = program.getReferenceManager();
         var cur = instr;
-        var writeFound = false;
-        for (int i = 0; i < SCAN_LIMIT; i++) {
+        var bank = 0;
+        var low = false;
+        // upper bits wrap away on ROMs the low register covers
+        var high = banks <= register.mask() + 1;
+        Long pending = null;
+        for (int i = 0; i < SCAN_LIMIT && !(low && high); i++) {
             // another path may reach cur with a different bank or A
             if (refs.hasReferencesTo(cur.getAddress())) {
-                return null;
+                break;
             }
             var prev = listing.getInstructionBefore(cur.getAddress());
             if (prev == null || !cur.getAddress().equals(prev.getFallThrough()) || prev.getFlowType().isCall()) {
-                return null;
+                break;
             }
             for (var op : prev.getPcode()) {
-                if (!writeFound) {
+                if (pending == null) {
                     var written = addressWrittenFrom(op, a);
-                    if (written != null && register.contains(written)) {
-                        writeFound = true;
+                    // the latest write to each register wins
+                    if (written != null && register.contains(written) && !(register.containsHigh(written) ? high : low)) {
+                        pending = written;
                     }
                 } else if (op.getOutput() != null && overlaps(op.getOutput(), a)) {
-                    if (op.getOpcode() == PcodeOp.COPY && op.getInput(0).isConstant()) {
-                        return register.bank((int) op.getInput(0).getOffset());
+                    if (op.getOpcode() != PcodeOp.COPY || !op.getInput(0).isConstant()) {
+                        return null;
                     }
-                    return null;
+                    bank = register.apply(bank, pending, (int) op.getInput(0).getOffset());
+                    if (register.containsHigh(pending)) {
+                        high = true;
+                    } else {
+                        low = true;
+                    }
+                    pending = null;
                 }
             }
             cur = prev;
         }
-        return null;
+        // unseen upper bits stay 0
+        return low && pending == null ? bank : null;
     }
 
     // LD (nn),A is a STORE through a constant or a COPY into a memory varnode
@@ -222,7 +235,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
                 && start.getOffset() <= reg.getOffset() && reg.getOffset() < start.getOffset() + varnode.getSize();
     }
 
-    private static void farCall(Program program, Instruction instr, AddressSet disassemble, AddressSet functions, TaskMonitor monitor, MessageLog log) {
+    private static void farCall(Program program, Instruction instr, int banks, AddressSet disassemble, AddressSet functions, TaskMonitor monitor, MessageLog log) {
         var data = instr.getMaxAddress().next();
         var bytes = new byte[3];
         try {
@@ -239,7 +252,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         createData(program, data.add(2), ByteDataType.dataType, log);
         disassemble.add(resume);
 
-        var target = romAddress(program, instr.getAddress(), bytes[2] & 0xff, (bytes[0] & 0xff) | ((bytes[1] & 0xff) << 8));
+        var target = romAddress(program, instr.getAddress(), bytes[2] & 0xff, (bytes[0] & 0xff) | ((bytes[1] & 0xff) << 8), banks);
         if (target != null) {
             addPrimaryReference(program, instr.getAddress(), target, RefType.CALL_OVERRIDE_UNCONDITIONAL);
             disassemble.add(target);
@@ -332,11 +345,12 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         return program.getMemory().contains(address) ? address : null;
     }
 
-    private static Address romAddress(Program program, Address from, int bank, int offset) {
+    private static Address romAddress(Program program, Address from, int bank, int offset, int banks) {
         if (offset < 0x4000 || offset >= 0x8000) {
             return sameBankAddress(program, from, offset);
         }
-        var block = program.getMemory().getBlock("rom" + bank);
+        // MBC wraps bank numbers past the ROM size
+        var block = program.getMemory().getBlock("rom" + bank % banks);
         if (block == null || !block.isOverlay()) {
             return null;
         }

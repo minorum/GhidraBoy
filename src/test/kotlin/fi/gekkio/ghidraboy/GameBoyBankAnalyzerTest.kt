@@ -81,13 +81,27 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             hex("c9").copyInto(rom, 0xc010)
         }
 
+    // MBC1 ROM calling 0x4000 after selecting bank 1 << 5 | 1
+    private fun mbc1Rom(size: Int): ByteArray =
+        ByteArray(size) { 0xff.toByte() }.also { rom ->
+            hex("00 c3 50 01").copyInto(rom, 0x0100)
+            ROM_LOGO.copyInto(rom, 0x0104)
+            ByteArray(0x0150 - 0x0134).copyInto(rom, 0x0134)
+            rom[0x0147] = 0x01
+            rom[0x0148] = (size / 0x8000).countTrailingZeroBits().toByte()
+            // LD A,1; LD (0x4000),A; LD A,1; LD (0x2000),A; CALL 0x4000; JR -2
+            hex("3e 01 ea 00 40 3e 01 ea 00 20 cd 00 40 18 fe").copyInto(rom, 0x0150)
+            (0x4000 until size step 0x4000).forEach { rom[it] = 0xc9.toByte() }
+        }
+
     private fun analyze(
         farCalls: String,
         jumpTables: String,
+        bytes: ByteArray = rom(),
         check: (Program) -> Unit,
     ) = ProgramLoader
         .builder()
-        .source(rom())
+        .source(bytes)
         .name("banked.gb")
         .loaders(GameBoyLoader::class.java)
         .load()
@@ -135,6 +149,18 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         analyze("", "") { program ->
             assertEquals(setOf(program.bankAddr(2, 0x4000)), program.refs(0x0155, RefType.CALL_OVERRIDE_UNCONDITIONAL))
             assertNotNull(program.functionManager.getFunctionAt(program.bankAddr(2, 0x4000)))
+        }
+
+    @Test
+    fun `upper bank bits select banks past the low register range`() =
+        analyze("", "", mbc1Rom(0x100000)) { program ->
+            assertEquals(setOf(program.bankAddr(0x21, 0x4000)), program.refs(0x015a, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+        }
+
+    @Test
+    fun `upper bank bits wrap on small ROMs`() =
+        analyze("", "", mbc1Rom(0x10000)) { program ->
+            assertEquals(setOf(program.bankAddr(1, 0x4000)), program.refs(0x015a, RefType.CALL_OVERRIDE_UNCONDITIONAL))
         }
 
     @Test

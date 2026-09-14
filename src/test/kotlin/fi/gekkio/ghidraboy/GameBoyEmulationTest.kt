@@ -59,16 +59,46 @@ class GameBoyEmulationTest : IntegrationTest() {
     }
 
     @Test
+    fun `upper bank bits combine with the low bank register`() {
+        fun banks(
+            cartType: Int,
+            vararg code: Int,
+        ): List<Int> {
+            val banks = mutableListOf<Int>()
+            val switching =
+                GameBoyEmulation.BankSwitching(BankRegister.of(cartType)) { bank ->
+                    banks += bank
+                    ByteArray(0x4000)
+                }
+            val thread = GameBoyEmulation.Emulator(language, switching).load(*code)
+            repeat(3) { thread.stepInstruction() }
+            return banks
+        }
+        // LD A,1; LD (0x3000),A; LD A,(0x4000)
+        assertEquals(listOf(0x101), banks(0x19, 0x3e, 0x01, 0xea, 0x00, 0x30, 0xfa, 0x00, 0x40))
+        // LD A,2; LD (0x4000),A; LD A,(0x4000)
+        assertEquals(listOf(0x41), banks(0x01, 0x3e, 0x02, 0xea, 0x00, 0x40, 0xfa, 0x00, 0x40))
+    }
+
+    @Test
     fun `bank register decoding`() {
         val mbc1 = BankRegister.of(0x01)
-        assertEquals(1, mbc1.bank(0x00))
-        assertEquals(0x1f, mbc1.bank(0xff))
+        assertEquals(1, mbc1.apply(0, 0x2000, 0x00))
+        assertEquals(0x1f, mbc1.apply(0, 0x2000, 0xff))
+        assertEquals(0x41, mbc1.apply(0x01, 0x4000, 0x02))
+        assertEquals(0x41, mbc1.apply(0x5f, 0x2000, 0x00))
         assertTrue(mbc1.contains(0x3fff))
+        assertTrue(mbc1.contains(0x5fff))
+        assertFalse(mbc1.contains(0x6000))
         val mbc2 = BankRegister.of(0x05)
         assertTrue(mbc2.contains(0x2100))
         assertFalse(mbc2.contains(0x2000))
-        assertEquals(0, BankRegister.of(0x19).bank(0x00))
-        assertFalse(BankRegister.of(0x19).contains(0x3000))
+        assertEquals(2, mbc2.apply(1, 0x2100, 0x02))
+        val mbc5 = BankRegister.of(0x19)
+        assertEquals(0, mbc5.apply(1, 0x2000, 0x00))
+        assertEquals(0x105, mbc5.apply(0x05, 0x3000, 0x01))
+        assertEquals(0x1ff, mbc5.apply(0x105, 0x2000, 0xff))
+        assertTrue(mbc5.contains(0x3000))
         assertNull(BankRegister.of(0x00))
     }
 }

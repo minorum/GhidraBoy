@@ -75,7 +75,7 @@ public final class GameBoyEmulation {
         @Override
         public <A, U> void dataWritten(PcodeThread<byte[]> thread, PcodeExecutorStatePiece<A, U> piece, Address address, int length, U value) {
             if (address.isMemoryAddress() && register.contains(address.getOffset()) && value instanceof byte[] bytes && bytes.length > 0) {
-                bank = register.bank(bytes[0] & 0xff);
+                bank = register.apply(bank, address.getOffset(), bytes[0] & 0xff);
                 map(piece, address.getAddressSpace());
             }
         }
@@ -110,11 +110,7 @@ public final class GameBoyEmulation {
 
     static IntFunction<byte[]> bankBytes(Program program) {
         var memory = program.getMemory();
-        var count = 1;
-        while (memory.getBlock("rom" + count) != null) {
-            count++;
-        }
-        var banks = count;
+        var banks = BankRegister.romBanks(program);
         return bank -> {
             // MBC wraps bank numbers past the ROM size
             var block = memory.getBlock("rom" + bank % banks);
