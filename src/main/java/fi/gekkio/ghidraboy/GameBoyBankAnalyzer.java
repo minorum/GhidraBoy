@@ -331,6 +331,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         var memory = program.getMemory();
         var refs = program.getReferenceManager();
         var targets = new ArrayList<Address>();
+        var overlaps = new ArrayList<Long>();
         var tableEnd = Long.MAX_VALUE;
         for (int i = 0; i < MAX_TABLE_ENTRIES; i++) {
             Address entry;
@@ -351,15 +352,45 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             }
             // tables end before words into the middle of known code
             var code = program.getListing().getInstructionContaining(target);
+            Long overlap = null;
             if (code != null && !code.getAddress().equals(target)) {
-                break;
+                if (!inFallThrough(program, from, code.getAddress())) {
+                    break;
+                }
+                overlap = code.getAddress().getOffset();
             }
             if (target.getAddressSpace().equals(table.getAddressSpace()) && target.getOffset() > table.getOffset()) {
                 tableEnd = Math.min(tableEnd, target.getOffset());
             }
             targets.add(target);
+            overlaps.add(overlap);
+        }
+        // fall-through code under a target must start inside the table
+        for (int i = 0; i < targets.size(); i++) {
+            var start = overlaps.get(i);
+            if (start != null && start >= table.getOffset() + 2L * targets.size()) {
+                targets.subList(i, targets.size()).clear();
+                i = -1;
+            }
         }
         return targets;
+    }
+
+    // a dispatcher call's fall-through may be its own table decoded as code
+    private static boolean inFallThrough(Program program, Address from, Address code) {
+        var listing = program.getListing();
+        var cur = listing.getInstructionAt(from);
+        for (int i = 0; cur != null && i < 2 * MAX_TABLE_ENTRIES; i++) {
+            var next = cur.getFallThrough();
+            if (next == null || !next.getAddressSpace().equals(code.getAddressSpace()) || next.compareTo(code) > 0) {
+                return false;
+            }
+            if (next.equals(code)) {
+                return true;
+            }
+            cur = listing.getInstructionAt(next);
+        }
+        return false;
     }
 
     static void markTable(Program program, Address from, Address table, List<Address> targets, AddressSet disassemble, TaskMonitor monitor, MessageLog log) {
