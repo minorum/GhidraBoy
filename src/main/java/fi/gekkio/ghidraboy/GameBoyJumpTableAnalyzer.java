@@ -35,6 +35,7 @@ import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -45,6 +46,11 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
     private static final int MAX_INSTRUCTION_LENGTH = 3;
     // LD A,(HL+); LD H,(HL); LD L,A
     private static final byte[] LOAD_POINTER = {0x2a, 0x66, 0x6f};
+    // ADD L; LD L,A; JR NC,+1; INC H  and  ADD L; LD L,A; ADC H; SUB L; LD H,A
+    private static final byte[][] CARRY_INTO_H = {
+            {(byte) 0x85, 0x6f, 0x30, 0x01, 0x24},
+            {(byte) 0x85, 0x6f, (byte) 0x8c, (byte) 0x95, 0x67},
+    };
 
     public GameBoyJumpTableAnalyzer() {
         super(NAME, "Recovers word jump tables dispatched with LD HL,table ... LD A,(HL+) / LD H,(HL) / LD L,A / JP HL", AnalyzerType.INSTRUCTION_ANALYZER);
@@ -149,6 +155,12 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
         var hl = program.getRegister("HL");
         var cur = jump;
         for (int i = 0; i < SCAN_LIMIT; i++) {
+            if (i == LOAD_POINTER.length) {
+                var add = carryIntoH(program, cur);
+                if (add != null) {
+                    cur = add;
+                }
+            }
             // another path may reach cur with a different HL
             if (refs.hasReferencesTo(cur.getAddress())) {
                 return null;
@@ -176,6 +188,39 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
             cur = prev;
         }
         return null;
+    }
+
+    // ADD L instruction of an 8-bit index add carried into H just before the pointer load
+    private static Instruction carryIntoH(Program program, Instruction load) {
+        var listing = program.getListing();
+        var refs = program.getReferenceManager();
+        Address start;
+        var bytes = new byte[5];
+        try {
+            start = load.getAddress().subtractNoWrap(bytes.length);
+            if (program.getMemory().getBytes(start, bytes) != bytes.length) {
+                return null;
+            }
+        } catch (Exception e) {
+            return null;
+        }
+        var pattern = Arrays.stream(CARRY_INTO_H).filter(p -> Arrays.equals(p, bytes)).findFirst().orElse(null);
+        var add = listing.getInstructionAt(start);
+        if (pattern == null || add == null || listing.getInstructionAt(start.add(4)) == null) {
+            return null;
+        }
+        for (int i = 1; i < bytes.length; i++) {
+            if (refs.hasReferencesTo(start.add(i))) {
+                return null;
+            }
+        }
+        // only JR NC may branch to the load
+        for (var ref : refs.getReferencesTo(load.getAddress())) {
+            if (pattern[2] != 0x30 || !ref.getFromAddress().equals(start.add(2))) {
+                return null;
+            }
+        }
+        return add;
     }
 
     private static boolean writes(Instruction instr, Register register) {

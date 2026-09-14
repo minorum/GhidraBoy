@@ -398,6 +398,28 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `JP HL table indexed with an 8-bit add carried into H`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // LDH A,($81); LD HL,$0520; ADD A; ADD L; LD L,A; JR NC,+1; INC H; LD A,(HL+); LD H,(HL); LD L,A; JP HL
+                hex("c3 00 05").copyInto(rom, 0x0058)
+                hex("f5 e5 f0 81 21 20 05 87 85 6f 30 01 24 2a 66 6f e9").copyInto(rom, 0x0500)
+                hex("28 05 2a 05").copyInto(rom, 0x0520)
+                hex("c9 00 c9").copyInto(rom, 0x0528)
+                // LDH A,($81); LD HL,$0560; ADD A; ADD L; LD L,A; ADC H; SUB L; LD H,A; LD A,(HL+); LD H,(HL); LD L,A; JP HL
+                hex("c3 40 05").copyInto(rom, 0x0008)
+                hex("f0 81 21 60 05 87 85 6f 8c 95 67 2a 66 6f e9").copyInto(rom, 0x0540)
+                hex("68 05 6a 05").copyInto(rom, 0x0560)
+                hex("c9 00 c9").copyInto(rom, 0x0568)
+            },
+        ) { program ->
+            assertEquals(setOf(program.addr(0x0528), program.addr(0x052a)), program.refs(0x0510, RefType.COMPUTED_JUMP))
+            assertEquals(setOf(program.addr(0x0568), program.addr(0x056a)), program.refs(0x054e, RefType.COMPUTED_JUMP))
+        }
+
+    @Test
     fun `JP HL table ends at a word into the middle of an instruction`() =
         analyze("", "") { program ->
             assertEquals(setOf(program.addr(0x0400), program.addr(0x0402)), program.refs(0x041e, RefType.COMPUTED_JUMP))
