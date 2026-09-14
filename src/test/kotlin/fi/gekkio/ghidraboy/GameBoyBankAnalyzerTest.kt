@@ -717,6 +717,10 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                 hex("cd 20 08 cd 40 08 c9").copyInto(rom, 0x0008)
                 hex("cd 4b 08 c9").copyInto(rom, 0x0010)
                 hex("cd 60 08 c9").copyInto(rom, 0x0018)
+                // rst20: CALL $0880; RET
+                hex("cd 80 08 c9").copyInto(rom, 0x0020)
+                // PUSH BC; PUSH DE; PUSH HL; OR A; POP HL; POP DE; POP BC; RET NZ; LD A,3; LD ($2000),A; JP $4010
+                hex("c5 d5 e5 b7 e1 d1 c1 c0 3e 03 ea 00 20 c3 10 40").copyInto(rom, 0x0880)
                 // PUSH BC; PUSH DE; PUSH HL; LD DE,$1234; POP HL; PUSH DE; POP HL; POP DE; POP BC; RET
                 hex("c5 d5 e5 11 34 12 e1 d5 e1 d1 c1 c9").copyInto(rom, 0x0820)
                 // PUSH BC; PUSH DE; PUSH HL; LD A,($C000); DEC A; POP HL; POP DE; POP BC; RET Z / next: LD B,0; RET
@@ -731,6 +735,8 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             assertNotNull(program.functionManager.getFunctionAt(program.addr(0x0840)))
             assertNotNull(program.functionManager.getFunctionAt(program.addr(0x084b)))
             assertFalse(convention(0x0840) == "__asm_saved", "fall-through")
+            assertEquals(FlowOverride.CALL_RETURN, program.listing.getInstructionAt(program.addr(0x088d))?.flowOverride)
+            assertFalse(convention(0x0880) == "__asm_saved", "far tail jump")
             assertEquals("__asm_saved", convention(0x0860))
             val helper = program.functionManager.getFunctionAt(program.addr(0x0860))
             program.withTransaction {

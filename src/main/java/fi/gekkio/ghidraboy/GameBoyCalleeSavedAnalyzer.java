@@ -90,7 +90,8 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
         for (var instr : program.getListing().getInstructions(body, true)) {
             var flow = instr.getFlowType();
             var next = instr.getFallThrough();
-            if (flow.isComputed() || (next != null && !body.contains(next))) {
+            // tail calls (CALL_RETURN JPs) leave without the pops
+            if (flow.isComputed() || (next != null && !body.contains(next)) || (flow.isTerminal() && !isReturn(opcode(instr)))) {
                 return false;
             }
             if (flow.isJump()) {
