@@ -1039,6 +1039,88 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `home code entered only by a jump from banked code gets a function`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0600; RET
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD A,1; LD ($2000),A; CALL $4000; RET
+                hex("3e 01 ea 00 20 cd 00 40 c9").copyInto(rom, 0x0600)
+                // rom1: LD A,($C000); JP $0700
+                hex("fa 00 c0 c3 00 07").copyInto(rom, 0x4000)
+                // LD HL,$C800; DEC (HL); RET
+                hex("21 00 c8 35 c9").copyInto(rom, 0x0700)
+            },
+        ) { program ->
+            assertNotNull(program.functionManager.getFunctionAt(program.bankAddr(1, 0x4000)))
+            assertNotNull(program.listing.getInstructionAt(program.addr(0x0700)))
+            assertNotNull(program.functionManager.getFunctionAt(program.addr(0x0700)))
+            assertEquals(FlowOverride.CALL_RETURN, program.listing.getInstructionAt(program.bankAddr(1, 0x4003))?.flowOverride)
+        }
+
+    @Test
+    fun `home code also jumped to from home code stays in the home function`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0600; RET / rst10: CALL $0620; RET
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                hex("cd 20 06 c9").copyInto(rom, 0x0010)
+                // LD A,1; LD ($2000),A; CALL $4000; RET
+                hex("3e 01 ea 00 20 cd 00 40 c9").copyInto(rom, 0x0600)
+                // LD A,2; JP $0700
+                hex("3e 02 c3 00 07").copyInto(rom, 0x0620)
+                // rom1: LD A,($C000); JP $0700
+                hex("fa 00 c0 c3 00 07").copyInto(rom, 0x4000)
+                // LD HL,$C800; DEC (HL); RET
+                hex("21 00 c8 35 c9").copyInto(rom, 0x0700)
+            },
+        ) { program ->
+            assertEquals(null, program.functionManager.getFunctionAt(program.addr(0x0700)))
+            assertEquals(
+                program.functionManager.getFunctionAt(program.addr(0x0620)),
+                program.functionManager.getFunctionContaining(program.addr(0x0700)),
+            )
+            assertEquals(FlowOverride.NONE, program.listing.getInstructionAt(program.bankAddr(1, 0x4003))?.flowOverride)
+        }
+
+    @Test
+    fun `computed jumps from banked code into home code are not tail calls`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0600; RET
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD A,1; LD ($2000),A; CALL $4000; RET
+                hex("3e 01 ea 00 20 cd 00 40 c9").copyInto(rom, 0x0600)
+                // rom1: LD A,($C000); JP (HL)
+                hex("fa 00 c0 e9").copyInto(rom, 0x4000)
+                // LD HL,$C800; DEC (HL); RET
+                hex("21 00 c8 35 c9").copyInto(rom, 0x0700)
+            },
+        ) { program ->
+            val jump = program.bankAddr(1, 0x4003)
+            assertNotNull(program.functionManager.getFunctionContaining(jump))
+            program.withTransaction {
+                // a switch case into home code the rest of the program never reaches
+                DisassembleCommand(AddressSet(program.addr(0x0700)), null, true).applyTo(program)
+                program.referenceManager.addMemoryReference(jump, program.addr(0x0700), RefType.COMPUTED_JUMP, SourceType.ANALYSIS, 0)
+                GameBoyUnownedCodeAnalyzer().added(
+                    program,
+                    AddressSet(program.addr(0x0700), program.addr(0x0704)),
+                    TaskMonitor.DUMMY,
+                    MessageLog(),
+                )
+            }
+            assertEquals(FlowOverride.NONE, program.listing.getInstructionAt(jump)?.flowOverride)
+            assertEquals(null, program.functionManager.getFunctionAt(program.addr(0x0700)))
+        }
+
+    @Test
     fun `helpers restoring BC, DE and HL use the callee-saved convention`() =
         analyze(
             "",
