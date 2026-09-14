@@ -2,11 +2,44 @@
 
 ## [Unreleased]
 
+### Added
+
+- RST and interrupt vectors are entry points, so analysis creates functions there
+- Echo RAM blocks mapped onto work RAM
+- Cartridge RAM banks from the header RAM size, as overlays
+- Bitfield data types for LCDC, STAT, IE and IF
+- Loader log: cartridge type, header checksum and ROM size mismatches
+- Calling conventions `__asm_a`, `__asm_hl`, `__asm_f`, `__asm_void` and
+  `__asm_saved` (callee preserves BC, DE and HL)
+- "Game Boy Bank Switching" analyzer: resolves calls into banked ROM after
+  constant MBC bank register writes, including MBC1/MBC5 upper bank bits, plus
+  optional inline far call and jump table dispatchers configured by address
+- "Game Boy JP (HL) Jump Tables" analyzer: recovers word jump tables
+  dispatched through `LD HL,table` ... `LD A,(HL+)` / `LD H,(HL)` / `LD L,A` /
+  `JP HL` when Ghidra's switch recovery finds nothing or reads past the table
+- "Game Boy (SM83) Emulator" for the Debugger: runs `IME`/`HALT`/`STOP` and
+  switches ROM banks on MBC register writes, including upper bank bits (no
+  interrupts)
+
 ### Changed
 
+- Only I/O registers that change without CPU writes are volatile (declared in
+  the processor spec), so the decompiler shows bitfield writes such as
+  `LCDC.lcd_enable = 1`. In existing projects, clear the Volatile flag of the
+  `io` and `ie` blocks in the Memory Map to get the same result
 - Add support for Ghidra 12.1.3
 - Drop support for Ghidra 11.x
 - Build with Java 21 target
+
+### Fixed
+
+- ADC carry flag was never set when only the carry-in overflowed
+- SBC zero flag was computed from the old A value
+- SBC carry flag missed the borrow for operand 0xff with carry-in
+- ROMs that are not a whole number of 16 kB blocks failed to load
+- POP AF kept the low nibble of F
+- STOP is decoded as a 2-byte instruction
+- DAA is implemented in p-code instead of the `daaOperand` user op
 
 ## 20250830 - 2025-08-30
 

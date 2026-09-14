@@ -27,7 +27,7 @@ public record Sha256(String value) {
         return this.value;
     }
 
-    private static final Pattern SHA256_HEX = Pattern.compile("^[0-9a-z]{64}$");
+    private static final Pattern SHA256_HEX = Pattern.compile("^[0-9a-f]{64}$");
 
     public static Sha256 parse(String sha256Hex) {
         if (!SHA256_HEX.matcher(sha256Hex).matches()) {

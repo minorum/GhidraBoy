@@ -17,8 +17,8 @@ Supported Ghidra versions:
   - Can load greyscale boot ROMs (DMG/DMG0/MGB/SGB/SGB2)
   - Can load color boot ROMs (CGB/CGB0)
 * Memory blocks based on the hardware memory map
-  - Banked regions use overlays (TODO: figure out if there's a better way to
-    support them)
+  - Banked regions use overlays, Ghidra's only way to map several contents
+    at the same address
   - GB vs GBC differences are handled (e.g. banked WRAM)
 - Symbols for hardware registers (0xFFxx range)
   - GB vs GBC differences are handled (e.g. existence of KEY1 register)
@@ -55,13 +55,18 @@ You can then find a built extension .zip in the `build/distributions` directory.
 ## Open questions / problems
 
 - Decompiler output is difficult to read if certain instructions are used (e.g.
-  rotates, JP HL for jumptables)
+  rotates). The "Game Boy JP (HL) Jump Tables" analyzer recovers
+  `LD A,(HL+)` / `LD H,(HL)` / `LD L,A` / `JP HL` tables Ghidra's switch
+  recovery misses; other pointer loads are not recognized
 - Default "ASM calling convention" assumes all registers can be inputs and/or
-  outputs. Inputs/outputs are often guessed incorrectly, so manual tuning is
-  required for almost every function
-- Are overlays the only / the best solution for handling banked memory areas?
-  Right now in banked ROMs every function call to 0x4000-0x7fff needs to be
-  manually resolved to the correct bank(s)
+  outputs. Inputs/outputs are often guessed incorrectly; the `__asm_a`,
+  `__asm_hl`, `__asm_f`, `__asm_void` and `__asm_saved` conventions narrow the
+  outputs or mark BC/DE/HL as preserved, but still have to be chosen per function
+- Banked memory uses overlays. The "Game Boy Bank Switching" analyzer resolves
+  calls into 0x4000-0x7fff after constant bank register writes (including
+  MBC1/MBC5 upper bank bits), and inline
+  far call / jump table dispatchers once their addresses are set in the
+  analysis options; other cross-bank calls still need manual resolution
 
 ## License
 

@@ -9,7 +9,6 @@ import fi.gekkio.ghidraboy.withTransaction
 import ghidra.app.decompiler.DecompInterface
 import ghidra.app.plugin.assembler.Assemblers
 import ghidra.app.util.importer.MessageLog
-import ghidra.framework.Application
 import ghidra.program.database.ProgramDB
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSet
@@ -115,21 +114,7 @@ class DecompilerTest : IntegrationTest() {
             )
         assertDecompiled(
             f,
-            when (Application.getApplicationVersion()) {
-                "11.1", "11.1.1", "11.1.2" ->
-                    """
-            void memcpy(byte *dst,byte *src,word len)
-            {
-                for (; (byte)((byte)(len >> 8) | (byte)len) != 0; len = len - 1) {
-                    *dst = *src;
-                    src = src + 1;
-                    dst = dst + 1;
-                }
-                return;
-            }
             """
-                else ->
-                    """
             void memcpy(byte *dst,byte *src,word len)
             {
                 for (; (char)(len >> 8) != '\0' || (char)len != '\0'; len = len - 1) {
@@ -139,8 +124,7 @@ class DecompilerTest : IntegrationTest() {
                 }
                 return;
             }
-            """
-            },
+            """.trimIndent(),
         )
     }
 
@@ -169,20 +153,7 @@ class DecompilerTest : IntegrationTest() {
             )
         assertDecompiled(
             f,
-            when (Application.getApplicationVersion()) {
-                "11.1", "11.1.1", "11.1.2" ->
-                    """
-            void memset(byte *dst,byte val,word len)
-            {
-                for (; (byte)((byte)(len >> 8) | (byte)len) != 0; len = len - 1) {
-                    *dst = val;
-                    dst = dst + 1;
-                }
-                return;
-            }
             """
-                else ->
-                    """
             void memset(byte *dst,byte val,word len)
             {
                 for (; (char)(len >> 8) != '\0' || (char)len != '\0'; len = len - 1) {
@@ -191,8 +162,114 @@ class DecompilerTest : IntegrationTest() {
                 }
                 return;
             }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `LCDC bitfield write`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LDH A, (0x40)
+                OR 0x80
+                LDH (0x40), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
             """
-            },
+            void FUN_0000(void)
+            {
+                LCDC.lcd_enable = 1;
+                return;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `IE bitfield write`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LDH A, (0xFF)
+                AND 0xFE
+                LDH (0xFF), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
+            """
+            void FUN_0000(void)
+            {
+                IE.vblank = 0;
+                return;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `STAT bitfield read`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LDH A, (0x41)
+                AND 0x03
+                CP 0x01
+                RET NZ
+                LD A, 0x01
+                LD (0xC000), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
+            """
+            void FUN_0000(void)
+            {
+                stat sVar1;
+                sVar1 = STAT;
+                if (sVar1.mode != 1) {
+                    return;
+                }
+                DAT_c000 = 1;
+                return;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    // Ghidra 12.1 does not recover bitfield writes to volatile memory
+    @Test
+    fun `IF stays volatile`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LDH A, (0x0F)
+                AND 0xFE
+                LDH (0x0F), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
+            """
+            void FUN_0000(void)
+            {
+                interrupts iVar1;
+                iVar1 = IF;
+                IF = (interrupts)((byte)iVar1 & 0xfe);
+                return;
+            }
+            """.trimIndent(),
         )
     }
 
@@ -356,13 +433,127 @@ class DecompilerTest : IntegrationTest() {
             """
             byte daa(byte value)
             {
-                char cVar1;
-                cVar1 = daaOperand(value + 1,0xfe < value,((value & 0xf) + 1 & 0x10) != 0,0);
-                cVar1 = value + 1 + cVar1;
-                if (cVar1 == '\0') {
+                byte bVar1;
+                char cVar2;
+                bVar1 = value + 1;
+                cVar2 = bVar1 + ((0xfe < value || 0x99 < bVar1) * '`' |
+                    (((value & 0xf) + 1 & 0x10) != 0 || 9 < (bVar1 & 0xf)) * '\x06');
+                if (cVar2 == '\0') {
                     return 0;
                 }
-                return cVar1 + 1;
+                return cVar2 + 1;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `calling conventions are available`() {
+        val names = language.defaultCompilerSpec.callingConventions.map { it.name }
+        val expected = listOf("__asm", "__asm_a", "__asm_hl", "__asm_f", "__asm_void", "__asm_saved")
+        assertTrue(names.containsAll(expected), names.toString())
+    }
+
+    private fun callerOfHelper(helperConvention: String): Function {
+        assembleFunction(address(0x0100), "RET", name = "helper", callingConvention = helperConvention)
+        return assembleFunction(
+            address(0x0000),
+            """
+            LD B, 0x12
+            CALL 0x0100
+            LD A, B
+            RET
+            """.trimIndent(),
+            name = "caller",
+            returnParam = returnParameter(u8, register("A")),
+        )
+    }
+
+    @Test
+    fun `default convention clobbers registers across calls`() =
+        assertDecompiled(
+            callerOfHelper("__asm"),
+            """
+            byte caller(void)
+            {
+                byte extraout_B;
+                helper();
+                return extraout_B;
+            }
+            """.trimIndent(),
+        )
+
+    @Test
+    fun `callee-saved convention keeps registers across calls`() =
+        assertDecompiled(
+            callerOfHelper("__asm_saved"),
+            """
+            byte caller(void)
+            {
+                helper();
+                return 0x12;
+            }
+            """.trimIndent(),
+        )
+
+    @Test
+    fun `INC half carry decompilation`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LD A, C
+                INC A
+                DAA
+                RET
+                """.trimIndent(),
+                name = "inc_daa",
+                params =
+                    listOf(
+                        parameter("value", u8, register("C")),
+                    ),
+                returnParam = returnParameter(u8, register("A")),
+            )
+        assertDecompiled(
+            f,
+            """
+            byte inc_daa(byte value)
+            {
+                byte bVar1;
+                byte in_F;
+                bVar1 = value + 1;
+                return bVar1 + (((bool)((in_F & 0x10) >> 4) || 0x99 < bVar1) * '`' |
+                    ((value & 0xf) == 0xf || 9 < (bVar1 & 0xf)) * '\x06');
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `DEC half carry decompilation`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LD A, C
+                DEC A
+                DAA
+                RET
+                """.trimIndent(),
+                name = "dec_daa",
+                params =
+                    listOf(
+                        parameter("value", u8, register("C")),
+                    ),
+                returnParam = returnParameter(u8, register("A")),
+            )
+        assertDecompiled(
+            f,
+            """
+            byte dec_daa(byte value)
+            {
+                byte in_F;
+                return (value - 1) - (((in_F & 0x10) >> 4) * '`' | ((value & 0xf) == 0) * '\x06');
             }
             """.trimIndent(),
         )
@@ -374,9 +565,10 @@ class DecompilerTest : IntegrationTest() {
         decompiler = DecompInterface()
     }
 
+    private val consumer = Any()
+
     @BeforeEach
     fun beforeEach() {
-        val consumer = object {}
         program = ProgramDB("test", language, language.defaultCompilerSpec, consumer)
         program.withTransaction {
             program.memory.createInitializedBlock("rom", address(0x0000), 0x8000, 0, TaskMonitor.DUMMY, false)
@@ -389,6 +581,7 @@ class DecompilerTest : IntegrationTest() {
     @AfterEach
     fun afterEach() {
         decompiler.closeProgram()
+        program.release(consumer)
     }
 
     @AfterAll
@@ -402,6 +595,7 @@ class DecompilerTest : IntegrationTest() {
         name: String? = null,
         params: List<Parameter>? = null,
         returnParam: Parameter? = null,
+        callingConvention: String = "default",
     ): Function =
         program.withTransaction {
             val instructions: Iterable<Instruction> =
@@ -412,7 +606,6 @@ class DecompilerTest : IntegrationTest() {
             }
             program.functionManager.createFunction(name, address, addressSet, SourceType.USER_DEFINED).apply {
                 setCustomVariableStorage(true)
-                val callingConvention = "default"
                 val force = true
                 if (params != null) {
                     updateFunction(

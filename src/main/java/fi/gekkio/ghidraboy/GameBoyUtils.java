@@ -14,10 +14,13 @@
 package fi.gekkio.ghidraboy;
 
 import ghidra.app.util.importer.MessageLog;
+import ghidra.framework.store.LockException;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataUtilities;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.MemoryConflictException;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.util.exception.InvalidInputException;
@@ -42,21 +45,35 @@ public final class GameBoyUtils {
         }
         if (kind == GameBoyKind.CGB) {
             createUninitializedBlock(program, false, "wram0", as.getAddress(0xc000), 0x1000, "Work RAM (bank 0)", source, true, true, true, log);
+            Address wram1 = null;
             for (int i = 1; i <= 7; i++) {
-                createUninitializedBlock(program, true, "wram" + i, as.getAddress(0xd000), 0x1000, "Work RAM (bank %d)".formatted(i), source, true, true, true, log);
+                var block = createUninitializedBlock(program, true, "wram" + i, as.getAddress(0xd000), 0x1000, "Work RAM (bank %d)".formatted(i), source, true, true, true, log);
+                if (i == 1 && block != null) {
+                    wram1 = block.getStart();
+                }
+            }
+            createEchoBlock(program, "echo0", as.getAddress(0xe000), as.getAddress(0xc000), 0x1000, log);
+            if (wram1 != null) {
+                createEchoBlock(program, "echo1", as.getAddress(0xf000), wram1, 0xe00, log);
             }
         } else {
             createUninitializedBlock(program, false, "wram", as.getAddress(0xc000), 0x2000, "Work RAM", source, true, true, true, log);
+            createEchoBlock(program, "echo", as.getAddress(0xe000), as.getAddress(0xc000), 0x1e00, log);
         }
         createUninitializedBlock(program, false, "oam", as.getAddress(0xfe00), 0xa0, "Object Attribute Memory RAM", source, true, true, false, log);
-        var io = createUninitializedBlock(program, false, "io", as.getAddress(0xff00), 0x80, "I/O registers", source, true, true, false, log);
-        if (io != null) {
-            io.setVolatile(true);
-        }
+        // volatile registers are listed in sm83.pspec
+        createUninitializedBlock(program, false, "io", as.getAddress(0xff00), 0x80, "I/O registers", source, true, true, false, log);
         createUninitializedBlock(program, false, "hram", as.getAddress(0xff80), 0x7f, "High RAM", source, true, true, true, log);
-        var ie = createUninitializedBlock(program, false, "ie", as.getAddress(0xffff), 0x1, "Interrupt Enable register", source, true, true, false, log);
-        if (ie != null) {
-            ie.setVolatile(true);
+        createUninitializedBlock(program, false, "ie", as.getAddress(0xffff), 0x1, "Interrupt Enable register", source, true, true, false, log);
+    }
+
+    private static void createEchoBlock(Program program, String name, Address start, Address mapped, int length, MessageLog log) {
+        try {
+            var block = program.getMemory().createByteMappedBlock(name, start, mapped, length, false);
+            block.setComment("Echo RAM (mirror of " + mapped + ")");
+            block.setPermissions(true, true, false);
+        } catch (LockException | MemoryConflictException | AddressOverflowException | IllegalArgumentException e) {
+            log.appendException(e);
         }
     }
 
@@ -69,7 +86,7 @@ public final class GameBoyUtils {
         addHwData(program, "TIMA", as.getAddress(0xff05), u8);
         addHwData(program, "TMA", as.getAddress(0xff06), u8);
         addHwData(program, "TAC", as.getAddress(0xff07), u8);
-        addHwData(program, "IF", as.getAddress(0xff0f), u8);
+        addHwData(program, "IF", as.getAddress(0xff0f), DataTypes.INTERRUPTS);
         addHwData(program, "NR10", as.getAddress(0xff10), u8);
         addHwData(program, "NR11", as.getAddress(0xff11), u8);
         addHwData(program, "NR12", as.getAddress(0xff12), u8);
@@ -92,8 +109,8 @@ public final class GameBoyUtils {
         addHwData(program, "NR51", as.getAddress(0xff25), u8);
         addHwData(program, "NR52", as.getAddress(0xff26), u8);
         addHwData(program, "WAVE", as.getAddress(0xff30), array(u8, 16));
-        addHwData(program, "LCDC", as.getAddress(0xff40), u8);
-        addHwData(program, "STAT", as.getAddress(0xff41), u8);
+        addHwData(program, "LCDC", as.getAddress(0xff40), DataTypes.LCDC);
+        addHwData(program, "STAT", as.getAddress(0xff41), DataTypes.STAT);
         addHwData(program, "SCY", as.getAddress(0xff42), u8);
         addHwData(program, "SCX", as.getAddress(0xff43), u8);
         addHwData(program, "LY", as.getAddress(0xff44), u8);
@@ -124,7 +141,7 @@ public final class GameBoyUtils {
             addHwData(program, "PCM12", as.getAddress(0xff76), u8);
             addHwData(program, "PCM34", as.getAddress(0xff77), u8);
         }
-        addHwData(program, "IE", as.getAddress(0xffff), u8);
+        addHwData(program, "IE", as.getAddress(0xffff), DataTypes.INTERRUPTS);
     }
 
     private static void addHwData(Program program, String name, Address address, DataType dataType) throws CodeUnitInsertionException, InvalidInputException {

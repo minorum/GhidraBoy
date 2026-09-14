@@ -13,10 +13,8 @@
 // limitations under the License.
 package fi.gekkio.ghidraboy
 
-import ghidra.app.emulator.EmulatorHelper
 import ghidra.program.database.ProgramDB
 import ghidra.program.disassemble.Disassembler
-import ghidra.program.model.listing.CodeUnit
 import ghidra.util.task.TaskMonitor
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -71,7 +69,7 @@ class DisassemblyTest : IntegrationTest() {
     fun `can disassemble RRCA`() = test(0x0f, "RRCA")
 
     @Test
-    fun `can disassemble STOP`() = test(0x10, "STOP")
+    fun `can disassemble STOP`() = test(0x10, "STOP", 0x00)
 
     @Test
     fun `can disassemble LD DE, nn`() = test(0x11, "LD DE,0x1234", 0x34, 0x12)
@@ -757,14 +755,7 @@ class DisassemblyTest : IntegrationTest() {
     fun `can disassemble XOR n`() = test(0xee, "XOR 0x55", 0x55)
 
     @Test
-    fun `can disassemble RST 0x28`() =
-        test(0xef, "RST 0x0028") {
-            val helper = EmulatorHelper(it.program)
-            helper.writeRegister("SP", 0xffff)
-            helper.step(TaskMonitor.DUMMY)
-            println(helper.readRegister("SP"))
-            println(helper.readRegister("PC"))
-        }
+    fun `can disassemble RST 0x28`() = test(0xef, "RST 0x0028")
 
     @Test
     fun `can disassemble LDH A, (n)`() = test(0xf0, "LDH A,(0x55)", 0x55)
@@ -821,23 +812,24 @@ class DisassemblyTest : IntegrationTest() {
         opcode: Int,
         expected: String,
         vararg args: Int,
-        assertions: (codeUnit: CodeUnit) -> Unit = {},
     ) {
-        val codeUnit = disassemble(byteArrayOf(opcode.toByte(), *(args.map { it.toByte() }).toByteArray()))
-        assertEquals(expected, codeUnit.toString())
-        assertions(codeUnit)
+        val text = disassemble(byteArrayOf(opcode.toByte(), *(args.map { it.toByte() }).toByteArray()))
+        assertEquals(expected, text)
     }
 
-    private fun disassemble(bytes: ByteArray): CodeUnit {
-        val consumer = object {}
+    private fun disassemble(bytes: ByteArray): String {
+        val consumer = Any()
         val program = ProgramDB("test", language, language.defaultCompilerSpec, consumer)
+        try {
+            val block = program.withTransaction { program.memory.loadBytes("rom", address(0x0000), bytes) }
 
-        val block = program.withTransaction { program.memory.loadBytes("rom", address(0x0000), bytes) }
-
-        val disassembler = Disassembler.getDisassembler(program, TaskMonitor.DUMMY, null)
-        return program.withTransaction {
-            disassembler.disassemble(block.start, program.memory.loadedAndInitializedAddressSet)
-            program.codeManager.getCodeUnitAt(block.start)
+            val disassembler = Disassembler.getDisassembler(program, TaskMonitor.DUMMY, null)
+            return program.withTransaction {
+                disassembler.disassemble(block.start, program.memory.loadedAndInitializedAddressSet)
+                program.codeManager.getCodeUnitAt(block.start).toString()
+            }
+        } finally {
+            program.release(consumer)
         }
     }
 }

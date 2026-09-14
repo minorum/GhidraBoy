@@ -121,7 +121,6 @@ HiMem8: (imm8) is imm8 {
 }
 
 define pcodeop IME;
-define pcodeop daaOperand;
 define pcodeop halt;
 define pcodeop stop;
 
@@ -152,7 +151,7 @@ macro aluAdc(op8) {
   $(Z_flag) = (tmp == 0);
   $(N_flag) = 0;
   $(H_flag) = (((A & 0xf) + (x & 0xf) + cy) & 0x10) != 0;
-  $(C_flag) = carry(carry(A, x), cy);
+  $(C_flag) = carry(A, x) || carry(A + x, cy);
   A = tmp;
 }
 
@@ -170,10 +169,10 @@ macro aluSbc(op8) {
   local x:1 = op8;
   local cy = $(C_flag);
   local tmp:1 = A - x - cy;
-  $(Z_flag) = (A == 0);
+  $(Z_flag) = (tmp == 0);
   $(N_flag) = 1;
   $(H_flag) = (((A & 0xf) - (x & 0xf) - cy) & 0x10) != 0;
-  $(C_flag) = A < (x + cy);
+  $(C_flag) = (A < x) || ((A - x) < cy);
   A = tmp;
 }
 
@@ -218,7 +217,6 @@ macro aluInc(op8) {
   local tmp:1 = x + 1;
   $(Z_flag) = (tmp == 0);
   $(N_flag) = 0;
-  # TODO: check which one is better for decompilation: (x & 0xf) == 0xf  vs  (((x & 0xf) + 1) & 0x10) != 0
   $(H_flag) = ((x & 0xf) == 0xf);
   op8 = tmp;
 }
@@ -228,13 +226,11 @@ macro aluDec(op8) {
   local tmp:1 = x - 1;
   $(Z_flag) = (tmp == 0);
   $(N_flag) = 1;
-  # TODO: check which one is better for decompilation: (x & 0xf) == 0  vs  (((x & 0xf) - 1) & 0x10) != 0
   $(H_flag) = ((x & 0xf) == 0);
   op8 = tmp;
 }
 
 macro aluRlc(op8) {
-  # TODO: double-check flags
   local x:1 = op8;
   local co:1 = x[7,1];
   local tmp:1 = (x << 1) | co;
@@ -246,7 +242,6 @@ macro aluRlc(op8) {
 }
 
 macro aluRrc(op8) {
-  # TODO: double-check flags
   local x:1 = op8;
   local co:1 = x[0,1];
   local tmp:1 = (co << 7) | (x >> 1);
@@ -258,7 +253,6 @@ macro aluRrc(op8) {
 }
 
 macro aluRl(op8) {
-  # TODO: double-check flags
   local x:1 = op8;
   local co:1 = x[7,1];
   local tmp:1 = (x << 1) | $(C_flag);
@@ -270,7 +264,6 @@ macro aluRl(op8) {
 }
 
 macro aluRr(op8) {
-  # TODO: double-check flags
   local x:1 = op8;
   local co:1 = x[0,1];
   local tmp:1 = ($(C_flag) << 7) | (x >> 1);
@@ -282,7 +275,6 @@ macro aluRr(op8) {
 }
 
 macro aluSla(op8) {
-  # TODO: double-check flags
   local x:1 = op8;
   local co:1 = x[7,1];
   local tmp:1 = x << 1;
@@ -294,7 +286,6 @@ macro aluSla(op8) {
 }
 
 macro aluSra(op8) {
-  # TODO: double-check flags
   local x:1 = op8;
   local co:1 = x[0,1];
   local tmp:1 = x s>> 1;
@@ -306,7 +297,6 @@ macro aluSra(op8) {
 }
 
 macro aluSwap(op8) {
-  # TODO: double-check flags
   local x:1 = op8;
   local tmp:1 = (x[0,4] << 4) | x[4,4];
   $(Z_flag) = (tmp == 0);
@@ -317,7 +307,6 @@ macro aluSwap(op8) {
 }
 
 macro aluSrl(op8) {
-  # TODO: double-check flags
   local x:1 = op8;
   local co:1 = x[0,1];
   local tmp:1 = x >> 1;
@@ -329,7 +318,6 @@ macro aluSrl(op8) {
 }
 
 macro aluBit(bit, op8) {
-  # TODO: double-check flags
   local x:1 = op8;
   local mask:1 = (1 << bit);
   local tmp:1 = x & mask;
@@ -339,7 +327,6 @@ macro aluBit(bit, op8) {
 }
 
 macro aluRes(bit, op8) {
-  # TODO: double-check flags
   local x:1 = op8;
   local mask:1 = ~(1 << bit);
   local tmp:1 = x & mask;
@@ -347,7 +334,6 @@ macro aluRes(bit, op8) {
 }
 
 macro aluSet(bit, op8) {
-  # TODO: double-check flags
   local x:1 = op8;
   local mask:1 = (1 << bit);
   local tmp:1 = x | mask;

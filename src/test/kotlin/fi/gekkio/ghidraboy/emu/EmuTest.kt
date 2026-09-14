@@ -14,30 +14,13 @@
 package fi.gekkio.ghidraboy.emu
 
 import fi.gekkio.ghidraboy.IntegrationTest
-import fi.gekkio.ghidraboy.withTransaction
-import ghidra.app.emulator.EmulatorHelper
-import ghidra.program.database.ProgramDB
-import ghidra.program.model.listing.Program
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 
 open class EmuTest : IntegrationTest() {
-    protected lateinit var program: Program
-    protected lateinit var emulator: EmulatorHelper
+    protected lateinit var emulator: TestEmulator
 
     @BeforeEach
     fun beforeEach() {
-        val consumer = object {}
-        program = ProgramDB("test", language, language.defaultCompilerSpec, consumer)
-        program.withTransaction {
-            program.memory.createUninitializedBlock("rom", address(0x0000), 0x10000, false)
-        }
-        emulator = EmulatorHelper(program)
-        emulator.memoryFaultHandler = FailOnMemoryFault(emulator)
-    }
-
-    @AfterEach
-    fun afterEach() {
-        emulator.dispose()
+        emulator = TestEmulator(language)
     }
 }

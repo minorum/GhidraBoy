@@ -53,10 +53,17 @@ val ghidraJars =
     fileTree("$ghidraDir/Ghidra/Framework") { include("**/*.jar") } +
         fileTree("$ghidraDir/Ghidra/Features") { include("**/*.jar") }
 
+// emulator factory only, kept off the test classpath
+val ghidraDebugJars =
+    fileTree("$ghidraDir/Ghidra/Debug") {
+        include("Debugger-api/**/*.jar", "Framework-TraceModeling/**/*.jar", "ProposedUtils/**/*.jar")
+    }
+
 val sleigh: Configuration by configurations.creating
 
 dependencies {
     compileOnly(ghidraJars)
+    compileOnly(ghidraDebugJars)
     sleigh(ghidraJars)
 
     testImplementation(ghidraJars)
@@ -70,6 +77,7 @@ dependencies {
 
 val generateExtensionProps by tasks.registering {
     val output = layout.buildDirectory.file("generated/extension.properties")
+    inputs.property("ghidraVersion", ghidraVersion)
     outputs.file(output)
     doLast {
         file(output).outputStream().use {
@@ -132,16 +140,29 @@ tasks.named("assemble") {
 }
 
 tasks.named<Test>("test") {
-    dependsOn("compileSleigh")
+    inputs.files(compileSleigh).withPropertyName("sla")
     useJUnitPlatform()
     jvmArgs("-Djdk.serialFilterFactory=ghidra.framework.remote.GhidraSerialFilterFactory")
 
     systemProperty("ghidra.dir", ghidraDir)
     systemProperty("SystemUtilities.isTesting", true)
+
+    // keep Ghidra's temp, cache and settings apart from a running Ghidra
+    val ghidraTestDir =
+        layout.buildDirectory
+            .dir("ghidra-test")
+            .get()
+            .asFile
+    systemProperty("application.tempdir", ghidraTestDir.resolve("tmp").path)
+    systemProperty("application.cachedir", ghidraTestDir.resolve("cache").path)
+    systemProperty("application.settingsdir", ghidraTestDir.resolve("settings").path)
+    doFirst {
+        listOf("tmp", "cache", "settings").forEach { ghidraTestDir.resolve(it).mkdirs() }
+    }
 }
 
 defaultTasks("clean", "assemble")
 
 ktlint {
-    setVersion("1.7.1")
+    version.set("1.7.1")
 }
