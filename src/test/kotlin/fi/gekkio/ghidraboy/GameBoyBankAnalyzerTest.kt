@@ -866,6 +866,53 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `code disassembled later does not take code from another function`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0600; CALL $0650; RET
+                hex("cd 00 06 cd 50 06 c9").copyInto(rom, 0x0008)
+                // G: OR A; JP Z,$0680; RET / $0680: LD A,1; JP $0700 / $0700: RET
+                hex("b7 ca 80 06 c9").copyInto(rom, 0x0600)
+                hex("3e 01 c3 00 07").copyInto(rom, 0x0680)
+                hex("c9").copyInto(rom, 0x0700)
+                // F: OR A; JP Z,$0660; RET / $0660: JP $0700
+                hex("b7 ca 60 06 c9").copyInto(rom, 0x0650)
+                hex("c3 00 07").copyInto(rom, 0x0660)
+            },
+            setup = { program ->
+                // F's jump target is data until a later fixup clears it
+                DataUtilities.createData(
+                    program,
+                    program.addr(0x0660),
+                    ArrayDataType(ByteDataType.dataType, 3, 1),
+                    -1,
+                    false,
+                    DataUtilities.ClearDataMode.CLEAR_ALL_UNDEFINED_CONFLICT_DATA,
+                )
+            },
+        ) { program ->
+            val manager = AutoAnalysisManager.getAnalysisManager(program)
+            val g = program.functionManager.getFunctionAt(program.addr(0x0600))
+            assertNotNull(g)
+            assertEquals(g, program.functionManager.getFunctionContaining(program.addr(0x0680)))
+            program.withTransaction {
+                program.listing.clearCodeUnits(program.addr(0x0660), program.addr(0x0662), false)
+                manager.disassemble(AddressSet(program.addr(0x0660)))
+                manager.startAnalysis(TaskMonitor.DUMMY)
+                program.flushEvents()
+                manager.startAnalysis(TaskMonitor.DUMMY)
+            }
+            val f = program.functionManager.getFunctionAt(program.addr(0x0650))
+            assertNotNull(f)
+            assertEquals(f, program.functionManager.getFunctionContaining(program.addr(0x0660)))
+            listOf(0x0680L, 0x0684L, 0x0700L).forEach {
+                assertEquals(g, program.functionManager.getFunctionContaining(program.addr(it)), it.toString(16))
+            }
+        }
+
+    @Test
     fun `helpers restoring BC, DE and HL use the callee-saved convention`() =
         analyze(
             "",

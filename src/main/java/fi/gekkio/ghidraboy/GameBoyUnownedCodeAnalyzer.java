@@ -18,7 +18,9 @@ import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
+import ghidra.program.database.function.OverlappingFunctionException;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
@@ -95,10 +97,26 @@ public class GameBoyUnownedCodeAnalyzer extends AbstractAnalyzer {
         return result;
     }
 
+    // recomputed bodies never take code from other functions
     static void fixupBodies(Program program, Iterable<Function> functions, TaskMonitor monitor) throws CancelledException {
+        var manager = program.getFunctionManager();
         for (var function : functions) {
             monitor.checkCancelled();
-            CreateFunctionCmd.fixupFunctionBody(program, function, monitor);
+            var body = new AddressSet(CreateFunctionCmd.getFunctionBody(program, function.getEntryPoint(), false, monitor));
+            for (var it = manager.getFunctionsOverlapping(body); it.hasNext();) {
+                var other = it.next();
+                if (!other.equals(function)) {
+                    body.delete(other.getBody());
+                }
+            }
+            if (!body.contains(function.getEntryPoint()) || body.equals(function.getBody())) {
+                continue;
+            }
+            try {
+                function.setBody(body);
+            } catch (OverlappingFunctionException e) {
+                // keep the old body
+            }
         }
     }
 }
