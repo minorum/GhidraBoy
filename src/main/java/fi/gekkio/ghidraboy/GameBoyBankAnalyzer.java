@@ -115,8 +115,15 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
                 reject.accept(token);
                 continue;
             }
+            long address;
+            try {
+                address = Long.parseLong(m.group(1), 16);
+            } catch (NumberFormatException e) {
+                reject.accept(token);
+                continue;
+            }
             var arguments = m.group(2) != null ? new Arguments(0, Integer.parseInt(m.group(2), 16)) : new Arguments(Integer.parseInt(m.group(3)), -1);
-            result.put(Long.parseLong(m.group(1), 16), arguments);
+            result.put(address, arguments);
         }
         return result;
     }
@@ -161,6 +168,10 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             } else if (isCall && jumpTableDispatchers.contains(target)) {
                 jumpTable(program, instr, disassemble, monitor, log);
             } else if (isCall && argumentDispatchers.containsKey(target)) {
+                // a banked dispatcher still needs its bank; before the fall-through override adds a flow
+                if (trackWrites && register != null && target >= 0x4000 && target < 0x8000) {
+                    bankSwitch(program, instr, register, banks, disassemble, functions);
+                }
                 inlineArguments(program, instr, argumentDispatchers.get(target), disassemble, monitor, log);
             } else if (trackWrites && register != null && target >= 0x4000 && target < 0x8000) {
                 bankSwitch(program, instr, register, banks, disassemble, functions);
@@ -506,6 +517,10 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         try {
             resume = data.addNoWrap(length);
         } catch (AddressOverflowException e) {
+            return;
+        }
+        // argument bytes must exist before the call skips them
+        if (!program.getMemory().contains(data, resume.previous())) {
             return;
         }
         instr.setFallThrough(resume);

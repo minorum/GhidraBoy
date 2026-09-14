@@ -1159,6 +1159,39 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `inline arguments to a banked dispatcher keep the bank reference`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD A,1; LD ($2000),A; CALL $4123 / db "AB",$50; RET
+                hex("3e 01 ea 00 20 cd 23 41 41 42 50 c9").copyInto(rom, 0x0600)
+                hex("c9").copyInto(rom, 0x4123)
+            },
+            setup = arguments("4123:t50"),
+        ) { program ->
+            assertEquals(setOf(program.bankAddr(1, 0x4123)), program.refs(0x0605, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+            assertEquals(program.addr(0x060b), program.listing.getInstructionAt(program.addr(0x0605)).fallThrough)
+        }
+
+    @Test
+    fun `fixed-length inline arguments past mapped memory leave the call site alone`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                hex("cd fc 3f c9").copyInto(rom, 0x0008)
+                // CALL $0700 at the end of rom0; two argument bytes would reach unmapped $4000
+                hex("cd 00 07 41").copyInto(rom, 0x3ffc)
+                hex("c9").copyInto(rom, 0x0700)
+            },
+            setup = arguments("0700:2"),
+        ) { program ->
+            assertEquals(program.addr(0x3fff), program.listing.getInstructionAt(program.addr(0x3ffc)).fallThrough)
+        }
+
+    @Test
     fun `inline argument dispatchers parse`() {
         val rejected = mutableListOf<String>()
         assertEquals(
@@ -1167,9 +1200,9 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         )
         assertEquals(
             emptyMap<Long, GameBoyBankAnalyzer.Arguments>(),
-            GameBoyBankAnalyzer.parseArguments("0150 0150:x 0150:0") { rejected.add(it) },
+            GameBoyBankAnalyzer.parseArguments("0150 0150:x 0150:0 10000000000000000:1 8000000000000000:t50") { rejected.add(it) },
         )
-        assertEquals(listOf("0150", "0150:x", "0150:0"), rejected)
+        assertEquals(listOf("0150", "0150:x", "0150:0", "10000000000000000:1", "8000000000000000:t50"), rejected)
     }
 
     @Test
