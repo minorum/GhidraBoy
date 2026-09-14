@@ -686,6 +686,13 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                 hex("fa 27 cf b7 ca b9 de ea 01 c0 c3 d7 db").copyInto(rom, 0x0600)
             },
         ) { program ->
+            // both jumps are tail calls to functions in RAM
+            listOf(0x0604L, 0x060aL).forEach {
+                assertEquals(FlowOverride.CALL_RETURN, program.listing.getInstructionAt(program.addr(it))?.flowOverride, it.toString(16))
+            }
+            listOf(0xdeb9L, 0xdbd7L).forEach {
+                assertNotNull(program.functionManager.getFunctionAt(program.addr(it)), it.toString(16))
+            }
             val function = program.functionManager.getFunctionAt(program.addr(0x0600))
             assertNotNull(function)
             val decompiler = DecompInterface()
