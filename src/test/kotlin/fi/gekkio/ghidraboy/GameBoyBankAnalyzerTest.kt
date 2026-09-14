@@ -212,14 +212,22 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
 
     @Test
     fun `decompiler names banked RAM by the selected bank`() =
-        analyze("", "", cgbRom().also { hex("3e 03 e0 70 fa a1 d9 ea 00 c0 c9").copyInto(it, 0x0150) }) { program ->
+        // LD A,3; LDH ($70),A; LD A,1; LDH ($4F),A; LD A,($D9A1); LD ($8000),A; RET
+        analyze("", "", cgbRom().also { hex("3e 03 e0 70 3e 01 e0 4f fa a1 d9 ea 00 80 c9").copyInto(it, 0x0150) }) { program ->
             program.withTransaction {
-                program.symbolTable.createLabel(
+                val symbols = program.symbolTable
+                symbols.createLabel(
                     program.addressFactory.getAddressSpace("wram3").getAddress(0xd9a1),
-                    "bank3_var",
+                    "wram3_var",
                     SourceType.USER_DEFINED,
                 )
-                program.symbolTable.createLabel(program.addr(0xd9a1), "bank1_var", SourceType.USER_DEFINED)
+                symbols.createLabel(program.addr(0xd9a1), "wram1_var", SourceType.USER_DEFINED)
+                symbols.createLabel(
+                    program.addressFactory.getAddressSpace("vram1").getAddress(0x8000),
+                    "vram1_var",
+                    SourceType.USER_DEFINED,
+                )
+                symbols.createLabel(program.addr(0x8000), "vram0_var", SourceType.USER_DEFINED)
             }
             val function =
                 program.functionManager.getFunctionContaining(program.addr(0x0154)) ?: program.withTransaction {
@@ -232,7 +240,10 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                 assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
                 val results = decompiler.decompileFunction(function, 10, TaskMonitor.DUMMY)
                 val c = results.decompiledFunction?.c
-                assertTrue(c != null && c.contains("bank3_var") && !c.contains("bank1_var"), "${results.errorMessage}\n$c")
+                assertTrue(
+                    c != null && c.contains("vram1_var = wram3_var;") && !c.contains("wram1_var") && !c.contains("vram0_var"),
+                    "${results.errorMessage}\n$c",
+                )
             } finally {
                 decompiler.dispose()
             }
