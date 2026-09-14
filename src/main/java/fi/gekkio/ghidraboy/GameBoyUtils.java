@@ -73,35 +73,35 @@ public final class GameBoyUtils {
 
     public static void populateHardwareBlocks(Program program, GameBoyKind kind) throws CodeUnitInsertionException, InvalidInputException {
         var as = program.getAddressFactory().getDefaultAddressSpace();
-        addHwData(program, "P1", as.getAddress(0xff00), u8);
+        addHwData(program, "P1", as.getAddress(0xff00), DataTypes.P1);
         addHwData(program, "SB", as.getAddress(0xff01), u8);
-        addHwData(program, "SC", as.getAddress(0xff02), u8);
+        addHwData(program, "SC", as.getAddress(0xff02), DataTypes.SC);
         addHwData(program, "DIV", as.getAddress(0xff04), u8);
         addHwData(program, "TIMA", as.getAddress(0xff05), u8);
         addHwData(program, "TMA", as.getAddress(0xff06), u8);
-        addHwData(program, "TAC", as.getAddress(0xff07), u8);
+        addHwData(program, "TAC", as.getAddress(0xff07), DataTypes.TAC);
         addHwData(program, "IF", as.getAddress(0xff0f), DataTypes.INTERRUPTS);
-        addHwData(program, "NR10", as.getAddress(0xff10), u8);
-        addHwData(program, "NR11", as.getAddress(0xff11), u8);
-        addHwData(program, "NR12", as.getAddress(0xff12), u8);
+        addHwData(program, "NR10", as.getAddress(0xff10), DataTypes.NR10);
+        addHwData(program, "NR11", as.getAddress(0xff11), DataTypes.NRX1);
+        addHwData(program, "NR12", as.getAddress(0xff12), DataTypes.NRX2);
         addHwData(program, "NR13", as.getAddress(0xff13), u8);
-        addHwData(program, "NR14", as.getAddress(0xff14), u8);
-        addHwData(program, "NR21", as.getAddress(0xff16), u8);
-        addHwData(program, "NR22", as.getAddress(0xff17), u8);
+        addHwData(program, "NR14", as.getAddress(0xff14), DataTypes.NRX4);
+        addHwData(program, "NR21", as.getAddress(0xff16), DataTypes.NRX1);
+        addHwData(program, "NR22", as.getAddress(0xff17), DataTypes.NRX2);
         addHwData(program, "NR23", as.getAddress(0xff18), u8);
-        addHwData(program, "NR24", as.getAddress(0xff19), u8);
-        addHwData(program, "NR30", as.getAddress(0xff1a), u8);
+        addHwData(program, "NR24", as.getAddress(0xff19), DataTypes.NRX4);
+        addHwData(program, "NR30", as.getAddress(0xff1a), DataTypes.NR30);
         addHwData(program, "NR31", as.getAddress(0xff1b), u8);
-        addHwData(program, "NR32", as.getAddress(0xff1c), u8);
+        addHwData(program, "NR32", as.getAddress(0xff1c), DataTypes.NR32);
         addHwData(program, "NR33", as.getAddress(0xff1d), u8);
-        addHwData(program, "NR34", as.getAddress(0xff1e), u8);
+        addHwData(program, "NR34", as.getAddress(0xff1e), DataTypes.NRX4);
         addHwData(program, "NR41", as.getAddress(0xff20), u8);
-        addHwData(program, "NR42", as.getAddress(0xff21), u8);
-        addHwData(program, "NR43", as.getAddress(0xff22), u8);
-        addHwData(program, "NR44", as.getAddress(0xff23), u8);
-        addHwData(program, "NR50", as.getAddress(0xff24), u8);
-        addHwData(program, "NR51", as.getAddress(0xff25), u8);
-        addHwData(program, "NR52", as.getAddress(0xff26), u8);
+        addHwData(program, "NR42", as.getAddress(0xff21), DataTypes.NRX2);
+        addHwData(program, "NR43", as.getAddress(0xff22), DataTypes.NR43);
+        addHwData(program, "NR44", as.getAddress(0xff23), DataTypes.NR44);
+        addHwData(program, "NR50", as.getAddress(0xff24), DataTypes.NR50);
+        addHwData(program, "NR51", as.getAddress(0xff25), DataTypes.NR51);
+        addHwData(program, "NR52", as.getAddress(0xff26), DataTypes.NR52);
         addHwData(program, "WAVE", as.getAddress(0xff30), array(u8, 16));
         addHwData(program, "LCDC", as.getAddress(0xff40), DataTypes.LCDC);
         addHwData(program, "STAT", as.getAddress(0xff41), DataTypes.STAT);
@@ -110,14 +110,14 @@ public final class GameBoyUtils {
         addHwData(program, "LY", as.getAddress(0xff44), u8);
         addHwData(program, "LYC", as.getAddress(0xff45), u8);
         addHwData(program, "DMA", as.getAddress(0xff46), u8);
-        addHwData(program, "BGP", as.getAddress(0xff47), u8);
-        addHwData(program, "OBP0", as.getAddress(0xff48), u8);
-        addHwData(program, "OBP1", as.getAddress(0xff49), u8);
+        addHwData(program, "BGP", as.getAddress(0xff47), DataTypes.PALETTE);
+        addHwData(program, "OBP0", as.getAddress(0xff48), DataTypes.PALETTE);
+        addHwData(program, "OBP1", as.getAddress(0xff49), DataTypes.PALETTE);
         addHwData(program, "WY", as.getAddress(0xff4a), u8);
         addHwData(program, "WX", as.getAddress(0xff4b), u8);
         if (kind == GameBoyKind.CGB) {
-            addHwData(program, "KEY1", as.getAddress(0xff4d), u8);
-            addHwData(program, "VBK", as.getAddress(0xff4f), u8);
+            addHwData(program, "KEY1", as.getAddress(0xff4d), DataTypes.KEY1);
+            addHwData(program, "VBK", as.getAddress(0xff4f), DataTypes.VBK);
         }
         addHwData(program, "BOOT", as.getAddress(0xff50), u8);
         if (kind == GameBoyKind.CGB) {
@@ -126,12 +126,12 @@ public final class GameBoyUtils {
             addHwData(program, "HDMA3", as.getAddress(0xff53), u8);
             addHwData(program, "HDMA4", as.getAddress(0xff54), u8);
             addHwData(program, "HDMA5", as.getAddress(0xff55), u8);
-            addHwData(program, "RP", as.getAddress(0xff56), u8);
-            addHwData(program, "BCPS", as.getAddress(0xff68), u8);
+            addHwData(program, "RP", as.getAddress(0xff56), DataTypes.RP);
+            addHwData(program, "BCPS", as.getAddress(0xff68), DataTypes.PALETTE_INDEX);
             addHwData(program, "BCPD", as.getAddress(0xff69), u8);
-            addHwData(program, "OCPS", as.getAddress(0xff6a), u8);
+            addHwData(program, "OCPS", as.getAddress(0xff6a), DataTypes.PALETTE_INDEX);
             addHwData(program, "OCPD", as.getAddress(0xff6b), u8);
-            addHwData(program, "SVBK", as.getAddress(0xff70), u8);
+            addHwData(program, "SVBK", as.getAddress(0xff70), DataTypes.SVBK);
             addHwData(program, "PCM12", as.getAddress(0xff76), u8);
             addHwData(program, "PCM34", as.getAddress(0xff77), u8);
         }

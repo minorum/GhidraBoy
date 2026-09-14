@@ -212,29 +212,64 @@ class GameBoyLoaderTest : IntegrationTest() {
     }
 
     @Test
-    fun `hardware registers use bitfield types`() =
-        load(rom(0x8000)) { program ->
-            val space = program.addressFactory.defaultAddressSpace
-            assertEquals(
-                "lcdc",
-                program.listing
-                    .getDataAt(space.getAddress(0xff40))
-                    .dataType.name,
+    fun `hardware registers use flag and bitfield types`() {
+        val common =
+            mapOf(
+                0xff00L to "p1",
+                0xff02L to "sc",
+                0xff07L to "tac",
+                0xff0fL to "interrupts",
+                0xff10L to "nr10",
+                0xff11L to "nrx1",
+                0xff12L to "nrx2",
+                0xff14L to "nrx4",
+                0xff16L to "nrx1",
+                0xff17L to "nrx2",
+                0xff19L to "nrx4",
+                0xff1aL to "nr30",
+                0xff1cL to "nr32",
+                0xff1eL to "nrx4",
+                0xff21L to "nrx2",
+                0xff22L to "nr43",
+                0xff23L to "nr44",
+                0xff24L to "nr50",
+                0xff25L to "nr51",
+                0xff26L to "nr52",
+                0xff40L to "lcdc",
+                0xff41L to "stat",
+                0xff47L to "palette",
+                0xff48L to "palette",
+                0xff49L to "palette",
+                0xffffL to "interrupts",
             )
-            assertEquals(
-                "stat",
-                program.listing
-                    .getDataAt(space.getAddress(0xff41))
-                    .dataType.name,
+        val cgbOnly =
+            mapOf(
+                0xff4dL to "key1",
+                0xff4fL to "vbk",
+                0xff56L to "rp",
+                0xff68L to "palette_index",
+                0xff6aL to "palette_index",
+                0xff70L to "svbk",
             )
-            assertEquals(
-                "interrupts",
-                program.listing
-                    .getDataAt(space.getAddress(0xffff))
-                    .dataType.name,
-            )
-            assertEquals(1, DataTypes.LCDC.length)
+
+        fun types(
+            program: Program,
+            addresses: Set<Long>,
+        ) = addresses.associateWith {
+            program.listing
+                .getDataAt(program.addressFactory.defaultAddressSpace.getAddress(it))
+                ?.dataType
+                ?.name
         }
+        load(rom(0x8000)) { program ->
+            assertEquals(common, types(program, common.keys))
+            assertEquals(cgbOnly.mapValues { "undefined" }, types(program, cgbOnly.keys))
+        }
+        load(rom(0x8000, mapOf(0x0143 to 0x80))) { program ->
+            assertEquals(common + cgbOnly, types(program, common.keys + cgbOnly.keys))
+        }
+        assertEquals(1, DataTypes.LCDC.length)
+    }
 
     @Test
     fun `header checks are logged`() {

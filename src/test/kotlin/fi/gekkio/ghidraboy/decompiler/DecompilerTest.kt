@@ -126,7 +126,7 @@ class DecompilerTest : IntegrationTest() {
             void FUN_0000(void)
             {
                 if (DAT_1234 == '\0') {
-                    OCPS = 0;
+                    OCPS = (palette_index)0x0;
                 }
                 IME(1);
                 return;
@@ -213,7 +213,7 @@ class DecompilerTest : IntegrationTest() {
     }
 
     @Test
-    fun `LCDC bitfield write`() {
+    fun `LCDC flag set`() {
         val f =
             assembleFunction(
                 address(0x0000),
@@ -229,7 +229,7 @@ class DecompilerTest : IntegrationTest() {
             """
             void FUN_0000(void)
             {
-                LCDC.lcd_enable = 1;
+                LCDC = LCDC | LCDCF_ON;
                 return;
             }
             """.trimIndent(),
@@ -237,7 +237,76 @@ class DecompilerTest : IntegrationTest() {
     }
 
     @Test
-    fun `IE bitfield write`() {
+    fun `LCDC constant write`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LD A, 0x83
+                LDH (0xff40), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
+            """
+            void FUN_0000(void)
+            {
+                LCDC = LCDCF_ON|LCDCF_OBJON|LCDCF_BGON;
+                return;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `TAC constant write`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LD A, 0x05
+                LDH (0xff07), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
+            """
+            void FUN_0000(void)
+            {
+                TAC = TACF_START|TACF_262KHZ;
+                return;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `NR52 constant write`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LD A, 0x80
+                LDH (0xff26), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
+            """
+            void FUN_0000(void)
+            {
+                NR52 = AUDENA_ON;
+                return;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `IE flag clear`() {
         val f =
             assembleFunction(
                 address(0x0000),
@@ -253,7 +322,7 @@ class DecompilerTest : IntegrationTest() {
             """
             void FUN_0000(void)
             {
-                IE.vblank = 0;
+                IE = IE & ~IEF_VBLANK;
                 return;
             }
             """.trimIndent(),
@@ -312,7 +381,7 @@ class DecompilerTest : IntegrationTest() {
             {
                 interrupts iVar1;
                 iVar1 = IF;
-                IF = (interrupts)((byte)iVar1 & 0xfe);
+                IF = iVar1 & ~IEF_VBLANK;
                 return;
             }
             """.trimIndent(),
@@ -396,20 +465,20 @@ class DecompilerTest : IntegrationTest() {
             """
             byte read_joypad_state(void)
             {
-                byte bVar1;
-                byte bVar2;
-                P1 = 0x20;
-                bVar1 = P1;
-                bVar1 = P1;
-                P1 = 0x10;
-                bVar2 = P1;
-                bVar2 = P1;
-                bVar2 = P1;
-                bVar2 = P1;
-                bVar2 = P1;
-                bVar2 = P1;
-                P1 = 0x30;
-                return ~bVar2 & 0xf | ~bVar1 << 4;
+                p1 pVar1;
+                p1 pVar2;
+                P1 = P1F_5;
+                pVar1 = P1;
+                pVar1 = P1;
+                P1 = P1F_4;
+                pVar2 = P1;
+                pVar2 = P1;
+                pVar2 = P1;
+                pVar2 = P1;
+                pVar2 = P1;
+                pVar2 = P1;
+                P1 = P1F_5|P1F_4;
+                return ~pVar2 & 0xf | ~pVar1 << 4;
             }
             """.trimIndent(),
         )

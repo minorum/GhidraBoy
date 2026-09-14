@@ -7,7 +7,10 @@
 - RST and interrupt vectors are entry points, so analysis creates functions there
 - Echo RAM blocks mapped onto work RAM
 - Cartridge RAM banks from the header RAM size, as overlays
-- Bitfield data types for LCDC, STAT, IE and IF
+- Hardware register data types: flag enums with hardware.inc names for LCDC,
+  IE/IF, P1, SC, TAC, NR30, NR51, NR52, KEY1 and RP; bitfield structs for STAT,
+  NR10, NRx1, NRx2, NRx4, NR32, NR43, NR44, NR50, palettes, VBK, SVBK and
+  BCPS/OCPS
 - Loader log: cartridge type, header checksum and ROM size mismatches
 - Calling conventions `__asm_a`, `__asm_hl`, `__asm_f`, `__asm_void` and
   `__asm_saved` (callee preserves BC, DE and HL)
@@ -27,8 +30,8 @@
 ### Changed
 
 - Only I/O registers that change without CPU writes are volatile (declared in
-  the processor spec), so the decompiler shows bitfield writes such as
-  `LCDC.lcd_enable = 1`. In existing projects, clear the Volatile flag of the
+  the processor spec), so the decompiler shows register writes such as
+  `LCDC = LCDC | LCDCF_ON`. In existing projects, clear the Volatile flag of the
   `io` and `ie` blocks in the Memory Map to get the same result
 - Add support for Ghidra 12.1.3
 - GBC VRAM bank 0 and WRAM bank 1 are default-space blocks, so absolute
