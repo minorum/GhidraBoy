@@ -64,8 +64,10 @@ public class GameBoyRamBankAnalyzer extends AbstractAnalyzer {
         var ram = program.getAddressFactory().getDefaultAddressSpace();
         for (var ref : refs.getReferencesFrom(instr.getAddress())) {
             var from = instr.getAddress().getAddressSpace();
-            // code inside a banked overlay references its own bank
-            if (!ref.isMemoryReference() || ref.getSource() == SourceType.USER_DEFINED || (from.isOverlaySpace() && from.equals(ref.getToAddress().getAddressSpace()))) {
+            var to = ref.getToAddress().getAddressSpace();
+            // code inside a banked overlay references its own bank; other overlays such as copied code are not RAM banks
+            if (!ref.isMemoryReference() || ref.getSource() == SourceType.USER_DEFINED || (from.isOverlaySpace() && from.equals(to))
+                    || (to.isOverlaySpace() && !to.getName().matches("[vw]ram\\d"))) {
                 continue;
             }
             var offset = ref.getToAddress().getOffset();

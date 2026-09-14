@@ -264,7 +264,7 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
         return add;
     }
 
-    private static boolean writes(Instruction instr, Register register) {
+    static boolean writes(Instruction instr, Register register) {
         var start = register.getAddress().getOffset();
         var end = start + register.getMinimumByteSize();
         for (var op : instr.getPcode()) {
