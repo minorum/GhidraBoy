@@ -27,6 +27,7 @@ import ghidra.program.model.listing.Function.FunctionUpdateType
 import ghidra.program.model.listing.ParameterImpl
 import ghidra.program.model.listing.Program
 import ghidra.program.model.listing.ReturnParameterImpl
+import ghidra.program.model.pcode.HighFunction
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.util.task.TaskMonitor
@@ -520,6 +521,83 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             } finally {
                 decompiler.dispose()
             }
+        }
+
+    @Test
+    fun `inline jump table size follows the index bound`() =
+        analyze(
+            "",
+            "0000",
+            rom().also { rom ->
+                // rst08: CALL $0600; CALL $0700; RET
+                hex("cd 00 06 cd 00 07 c9").copyInto(rom, 0x0008)
+                // LD A,($C883); AND 3; RST 00; dw $0680, $0681, $0682, $0683; LD A,$3D; LD ($C884),A; RET
+                hex("fa 83 c8 e6 03 c7 80 06 81 06 82 06 83 06 3e 3d ea 84 c8 c9").copyInto(rom, 0x0600)
+                // RET / CALL $060E; RET
+                hex("c9 00 00 cd 0e 06 c9").copyInto(rom, 0x0680)
+                // LD A,($C883); CP 2; RET NC; RST 00; dw $0780, $0783; LD A,$3D; LD ($C884),A; RET
+                hex("fa 83 c8 fe 02 d0 c7 80 07 83 07 3e 3d ea 84 c8 c9").copyInto(rom, 0x0700)
+                // RET / CALL $070B; RET
+                hex("c9 00 00 cd 0b 07 c9").copyInto(rom, 0x0780)
+            },
+        ) { program ->
+            assertEquals((0x0680L..0x0683L).map { program.addr(it) }.toSet(), program.refs(0x0605, RefType.COMPUTED_JUMP))
+            assertEquals("LD", program.listing.getInstructionAt(program.addr(0x060e))?.mnemonicString)
+            assertEquals(setOf(program.addr(0x0780), program.addr(0x0783)), program.refs(0x0706, RefType.COMPUTED_JUMP))
+            assertEquals("LD", program.listing.getInstructionAt(program.addr(0x070b))?.mnemonicString)
+        }
+
+    @Test
+    fun `bounded inline jump table keeps a case inside misaligned fall-through code`() =
+        analyze(
+            "",
+            "0000",
+            rom().also { rom ->
+                // rst08: CALL $0600; RET
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD A,($C883); AND 1; RST 00; dw $0680, $060D; LD A,$21; RET; RET
+                // table decodes as ADD A,B / LD B,$0D / LD B,$3E / LD HL,$C9C9 over $060D
+                hex("fa 83 c8 e6 01 c7 80 06 0d 06 3e 21 c9 c9").copyInto(rom, 0x0600)
+                hex("c9").copyInto(rom, 0x0680)
+            },
+        ) { program ->
+            assertEquals(setOf(program.addr(0x0680), program.addr(0x060d)), program.refs(0x0605, RefType.COMPUTED_JUMP))
+        }
+
+    @Test
+    fun `inline jump table override matches the marked cases after a re-dispatch`() =
+        analyze(
+            "",
+            "0000",
+            rom().also { rom ->
+                // rst08: CALL $0600; RET
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD A,($C883); AND 1; RST 00; dw $0680, $0690; LD A,$3D; LD ($C884),A; RET
+                hex("fa 83 c8 e6 01 c7 80 06 90 06 3e 3d ea 84 c8 c9").copyInto(rom, 0x0600)
+                // LD A,0; JR $0605 / RET
+                hex("3e 00 18 81").copyInto(rom, 0x0680)
+                hex("c9").copyInto(rom, 0x0690)
+            },
+        ) { program ->
+            val marked = program.refs(0x0605, RefType.COMPUTED_JUMP)
+            assertEquals(setOf(program.addr(0x0680), program.addr(0x0690)), marked)
+            val function = program.functionManager.getFunctionContaining(program.addr(0x0605))
+            assertNotNull(function)
+            val space =
+                program.symbolTable.getNamespace(
+                    "jmp_${program.addr(0x0605)}",
+                    HighFunction.findOverrideSpace(function),
+                )
+            assertNotNull(space)
+            val cases =
+                program.symbolTable
+                    .getSymbols(space)
+                    .iterator()
+                    .asSequence()
+                    .filter { it.name.startsWith("case") }
+                    .map { it.address }
+                    .toSet()
+            assertEquals(marked, cases)
         }
 
     @Test
