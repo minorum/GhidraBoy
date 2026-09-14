@@ -25,6 +25,7 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.data.ArrayDataType;
 import ghidra.program.model.data.ByteDataType;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataUtilities;
@@ -42,6 +43,7 @@ import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.util.CodeUnitInsertionException;
+import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 
@@ -52,20 +54,25 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.LongPredicate;
+import java.util.regex.Pattern;
 
 public class GameBoyBankAnalyzer extends AbstractAnalyzer {
     static final String NAME = "Game Boy Bank Switching";
     static final String OPT_TRACK_WRITES = "Track bank register writes";
     static final String OPT_FAR_CALLS = "Inline far call dispatchers";
     static final String OPT_JUMP_TABLES = "Inline jump table dispatchers";
+    static final String OPT_ARGUMENTS = "Inline argument dispatchers";
 
     private static final int SCAN_LIMIT = 16;
     private static final int MAX_TABLE_ENTRIES = 256;
+    private static final int MAX_ARGUMENT_BYTES = 256;
 
     private boolean trackWrites = true;
     private Set<Long> farCallDispatchers = Set.of();
     private Set<Long> jumpTableDispatchers = Set.of();
+    private Map<Long, Arguments> argumentDispatchers = Map.of();
 
     public GameBoyBankAnalyzer() {
         super(NAME, "Resolves calls into banked ROM after constant bank register writes and through configured inline dispatchers", AnalyzerType.INSTRUCTION_ANALYZER);
@@ -84,6 +91,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         options.registerOption(OPT_TRACK_WRITES, trackWrites, null, "Resolve CALL/JP into 0x4000-0x7FFF preceded by LD A,n and a write to the ROM bank register");
         options.registerOption(OPT_FAR_CALLS, "", null, "Hex addresses of routines called as CALL addr followed by db low, high, bank");
         options.registerOption(OPT_JUMP_TABLES, "", null, "Hex addresses of routines called as CALL/RST addr followed by a word table indexed by A");
+        options.registerOption(OPT_ARGUMENTS, "", null, "Routines called as CALL/RST addr followed by inline bytes: addr:N for N bytes, addr:tXX for bytes up to and including hex byte XX");
     }
 
     @Override
@@ -91,6 +99,36 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         trackWrites = options.getBoolean(OPT_TRACK_WRITES, trackWrites);
         farCallDispatchers = parseAddresses(options.getString(OPT_FAR_CALLS, ""));
         jumpTableDispatchers = parseAddresses(options.getString(OPT_JUMP_TABLES, ""));
+        argumentDispatchers = parseArguments(options.getString(OPT_ARGUMENTS, ""), token -> Msg.warn(this, NAME + ": ignoring " + OPT_ARGUMENTS + " entry " + token));
+    }
+
+    // fixed length, or terminator >= 0 with length 0
+    record Arguments(int length, int terminator) {
+    }
+
+    static Map<Long, Arguments> parseArguments(String text, Consumer<String> reject) {
+        var result = new HashMap<Long, Arguments>();
+        var pattern = Pattern.compile("(?:0[xX]|\\$)?([0-9a-fA-F]+):(?:t([0-9a-fA-F]{2})|([0-9]+))");
+        for (var token : text.trim().split("[,\\s]+")) {
+            if (token.isEmpty()) {
+                continue;
+            }
+            var m = pattern.matcher(token);
+            if (!m.matches() || (m.group(3) != null && (m.group(3).length() > 3 || Integer.parseInt(m.group(3)) < 1))) {
+                reject.accept(token);
+                continue;
+            }
+            long address;
+            try {
+                address = Long.parseLong(m.group(1), 16);
+            } catch (NumberFormatException e) {
+                reject.accept(token);
+                continue;
+            }
+            var arguments = m.group(2) != null ? new Arguments(0, Integer.parseInt(m.group(2), 16)) : new Arguments(Integer.parseInt(m.group(3)), -1);
+            result.put(address, arguments);
+        }
+        return result;
     }
 
     static Set<Long> parseAddresses(String text) {
@@ -139,6 +177,12 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
                 farCall(program, instr, banks, disassemble, functions, monitor, log);
             } else if (isCall && jumpTableDispatchers.contains(target)) {
                 jumpTable(program, instr, disassemble, monitor, log);
+            } else if (isCall && argumentDispatchers.containsKey(target)) {
+                // a banked dispatcher still needs its bank; before the fall-through override adds a flow
+                if (trackWrites && register != null && target >= 0x4000 && target < 0x8000) {
+                    bankSwitch(program, instr, register, banks, disassemble, functions);
+                }
+                inlineArguments(program, instr, argumentDispatchers.get(target), disassemble, monitor, log);
             } else if (trackWrites && register != null && target >= 0x4000 && target < 0x8000) {
                 bankSwitch(program, instr, register, banks, disassemble, functions);
             } else if (copy != null) {
@@ -596,6 +640,44 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         }
         instr.setFlowOverride(FlowOverride.CALL_RETURN);
         markTable(program, instr.getAddress(), table, targets, disassemble, monitor, log);
+    }
+
+    private static void inlineArguments(Program program, Instruction instr, Arguments arguments, AddressSet disassemble, TaskMonitor monitor, MessageLog log) {
+        var data = instr.getMaxAddress().next();
+        if (data == null) {
+            return;
+        }
+        var length = arguments.length();
+        if (arguments.terminator() >= 0) {
+            length = 0;
+            try {
+                for (int i = 0; i < MAX_ARGUMENT_BYTES && length == 0; i++) {
+                    if ((program.getMemory().getByte(data.addNoWrap(i)) & 0xff) == arguments.terminator()) {
+                        length = i + 1;
+                    }
+                }
+            } catch (MemoryAccessException | AddressOverflowException e) {
+                length = 0;
+            }
+            if (length == 0) {
+                log.appendMsg(NAME, "No terminator %02X within %d bytes after the call at %s".formatted(arguments.terminator(), MAX_ARGUMENT_BYTES, instr.getAddress()));
+                return;
+            }
+        }
+        Address resume;
+        try {
+            resume = data.addNoWrap(length);
+        } catch (AddressOverflowException e) {
+            return;
+        }
+        // argument bytes must exist before the call skips them
+        if (!program.getMemory().contains(data, resume.previous())) {
+            return;
+        }
+        instr.setFallThrough(resume);
+        new ClearFlowAndRepairCmd(data, false, false, true).applyTo(program, monitor);
+        createData(program, data, length == 1 ? ByteDataType.dataType : new ArrayDataType(ByteDataType.dataType, length, 1), log);
+        disassemble.add(resume);
     }
 
     // entries allowed by AND n (n + 1 a power of two) or CP n; RET/JR/JP NC falling through into the dispatcher call
