@@ -459,6 +459,37 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `decompiler shows the cases of an inline jump table`() =
+        analyze(
+            "",
+            "0000",
+            rom().also { rom ->
+                // rst08: CALL $0600; RET
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD A,($C800); RST 00; dw $0670, $0674
+                hex("fa 00 c8 c7 70 06 74 06").copyInto(rom, 0x0600)
+                // CALL $0200; RET / LD ($C001),A; RET
+                hex("cd 00 02 c9 ea 01 c0 c9").copyInto(rom, 0x0670)
+            },
+        ) { program ->
+            assertEquals(setOf(program.addr(0x0670), program.addr(0x0674)), program.refs(0x0603, RefType.COMPUTED_JUMP))
+            val function = program.functionManager.getFunctionAt(program.addr(0x0600))
+            assertNotNull(function)
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                val results = decompiler.decompileFunction(function, 10, TaskMonitor.DUMMY)
+                val c = results.decompiledFunction?.c
+                assertTrue(
+                    c != null && c.contains("switch") && c.contains("FUN_0200") && c.contains("DAT_c001"),
+                    "${results.errorMessage}\n$c",
+                )
+            } finally {
+                decompiler.dispose()
+            }
+        }
+
+    @Test
     fun `unguarded JP HL jump table`() =
         analyze("", "") { program ->
             assertEquals(setOf(program.addr(0x0318), program.addr(0x031c)), program.refs(0x030e, RefType.COMPUTED_JUMP))

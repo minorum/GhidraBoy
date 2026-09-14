@@ -25,10 +25,12 @@ import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.data.ByteDataType;
 import ghidra.program.model.lang.Register;
 import ghidra.program.model.listing.Data;
+import ghidra.program.model.listing.FlowOverride;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.pcode.JumpTable;
+import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.exception.InvalidInputException;
@@ -41,6 +43,8 @@ import java.util.List;
 
 public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
     static final String NAME = "Game Boy JP (HL) Jump Tables";
+
+    static final String INLINE_TABLE_FIXUP = "sm83_inline_jump_table";
 
     private static final int SCAN_LIMIT = 16;
     private static final int MAX_INSTRUCTION_LENGTH = 3;
@@ -71,6 +75,16 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
         var disassemble = new AddressSet();
         for (var instr : program.getListing().getInstructions(set, true)) {
             monitor.checkCancelled();
+            var dispatcherAddress = inlineTableDispatcher(program, instr);
+            if (dispatcherAddress != null) {
+                var targets = GameBoyBankAnalyzer.tableTargets(program, instr.getAddress(), instr.getMaxAddress().next());
+                var dispatcher = program.getFunctionManager().getFunctionAt(dispatcherAddress);
+                if (!targets.isEmpty() && dispatcher != null) {
+                    dispatcher.setCallFixup(INLINE_TABLE_FIXUP);
+                    tables.put(instr.getAddress(), targets);
+                }
+                continue;
+            }
             if (!instr.getFlowType().isComputed() || !"JP".equals(instr.getMnemonicString())) {
                 continue;
             }
@@ -106,6 +120,22 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
             CreateFunctionCmd.fixupFunctionBody(program, function, monitor);
         }
         return true;
+    }
+
+    // called dispatcher of a call the bank analyzer marked with its table targets
+    private static Address inlineTableDispatcher(Program program, Instruction instr) {
+        if (!instr.getFlowType().isCall() || instr.getFlowOverride() != FlowOverride.CALL_RETURN) {
+            return null;
+        }
+        Address dispatcher = null;
+        var marked = false;
+        for (var ref : program.getReferenceManager().getReferencesFrom(instr.getAddress())) {
+            if (ref.getReferenceType().isCall()) {
+                dispatcher = ref.getToAddress();
+            }
+            marked |= ref.getReferenceType() == RefType.COMPUTED_JUMP && ref.getSource() == SourceType.ANALYSIS;
+        }
+        return marked ? dispatcher : null;
     }
 
     // unresolved, or resolved by other analyzers past the end of the table
