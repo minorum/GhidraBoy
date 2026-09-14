@@ -208,8 +208,20 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
                 break;
             }
             var prev = listing.getInstructionBefore(cur.getAddress());
-            if (prev == null || !cur.getAddress().equals(prev.getFallThrough()) || prev.getFlowType().isCall()) {
+            if (prev == null || !cur.getAddress().equals(prev.getFallThrough())) {
                 break;
+            }
+            if (prev.getFlowType().isCall()) {
+                var helper = pending == null ? helperWrite(program, prev, target) : null;
+                if (helper == null) {
+                    break;
+                }
+                if (!helper.entryA()) {
+                    return new Write(helper.address(), helper.value());
+                }
+                pending = helper.address();
+                cur = prev;
+                continue;
             }
             var constants = new HashMap<Varnode, Long>();
             var copiesOfA = new HashSet<Varnode>();
@@ -232,6 +244,55 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             cur = prev;
         }
         return pending == null ? null : new Write(pending, null);
+    }
+
+    // last register write a called helper makes; entryA when it writes the caller's A
+    record HelperWrite(long address, Integer value, boolean entryA) {
+    }
+
+    // ponytail: straight-line helpers only, no calls or conditional branches inside
+    private static HelperWrite helperWrite(Program program, Instruction call, LongPredicate target) {
+        if (call.getFlows().length != 1) {
+            return null;
+        }
+        var a = program.getRegister("A");
+        var sp = program.getRegister("SP");
+        var listing = program.getListing();
+        var cur = listing.getInstructionAt(call.getFlows()[0]);
+        Integer value = null;
+        var entryA = true;
+        HelperWrite result = null;
+        for (int i = 0; cur != null && i < SCAN_LIMIT; i++) {
+            var flow = cur.getFlowType();
+            if (flow.isCall() || flow.isConditional() || flow.isComputed()) {
+                return null;
+            }
+            var constants = new HashMap<Varnode, Long>();
+            var copiesOfA = new HashSet<Varnode>();
+            for (var op : cur.getPcode()) {
+                if (op.getOpcode() == PcodeOp.STORE && constant(op.getInput(1), constants) == null && !isRegister(op.getInput(1), sp)) {
+                    return null;
+                }
+                var written = addressWrittenFrom(op, a, constants, copiesOfA);
+                if (written != null && target.test(written)) {
+                    result = new HelperWrite(written, value, entryA);
+                }
+                if (op.getOutput() != null && overlaps(op.getOutput(), a)) {
+                    entryA = false;
+                    value = op.getOpcode() == PcodeOp.COPY && op.getInput(0).isConstant() ? Integer.valueOf((int) op.getInput(0).getOffset()) : null;
+                }
+                fold(op, constants, copiesOfA, a);
+            }
+            if (flow.isTerminal()) {
+                return result;
+            }
+            var next = flow.isJump() ? cur.getFlows()[0] : cur.getFallThrough();
+            if (next == null) {
+                return null;
+            }
+            cur = listing.getInstructionAt(next);
+        }
+        return null;
     }
 
     // constant temporaries such as LDH's 0xff00 | zext(n), and copies of A
