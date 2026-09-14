@@ -32,7 +32,9 @@ import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -79,7 +81,6 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
         return true;
     }
 
-    // ponytail: no stack depth tracking, any other PUSH/POP or SP change rejects; track depth to allow balanced inner pairs
     static boolean savesBcDeHl(Program program, Function function) {
         var matched = new HashSet<Address>();
         var pushes = entryPushes(program, function, matched);
@@ -105,8 +106,61 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
                 return false;
             }
         }
-        for (var instr : program.getListing().getInstructions(body, true)) {
-            if (!matched.contains(instr.getAddress()) && changesStack(opcode(instr))) {
+        return balancedStack(program, function, matched);
+    }
+
+    // inner PUSH/POP pairs balance on every path and the saved registers are popped at the entry depth
+    private static boolean balancedStack(Program program, Function function, Set<Address> matched) {
+        var listing = program.getListing();
+        var depths = new HashMap<Address, Integer>();
+        var work = new ArrayDeque<Address>();
+        depths.put(function.getEntryPoint(), 0);
+        work.add(function.getEntryPoint());
+        while (!work.isEmpty()) {
+            var address = work.poll();
+            var instr = listing.getInstructionAt(address);
+            if (instr == null) {
+                return false;
+            }
+            int depth = depths.get(address);
+            var op = opcode(instr);
+            if (matched.contains(address)) {
+                if ((op & 0xcf) == 0xc1 && depth != 0) {
+                    return false;
+                }
+            } else if ((op & 0xcf) == 0xc5) {
+                depth += 2;
+            } else if ((op & 0xcf) == 0xc1) {
+                depth -= 2;
+                if (depth < 0) {
+                    return false;
+                }
+            } else if (changesStack(op)) {
+                return false;
+            }
+            var successors = new ArrayList<Address>();
+            if (instr.getFallThrough() != null) {
+                successors.add(instr.getFallThrough());
+            }
+            if (instr.getFlowType().isJump()) {
+                successors.addAll(List.of(instr.getFlows()));
+            }
+            for (var next : successors) {
+                // re-entering pushes the registers again after a return path popped them
+                if (next.equals(function.getEntryPoint())) {
+                    return false;
+                }
+                var known = depths.putIfAbsent(next, depth);
+                if (known == null) {
+                    work.add(next);
+                } else if (known != depth) {
+                    return false;
+                }
+            }
+        }
+        // stack changes the walk from the entry never reached
+        for (var instr : listing.getInstructions(function.getBody(), true)) {
+            if (!depths.containsKey(instr.getAddress()) && changesStack(opcode(instr))) {
                 return false;
             }
         }
@@ -124,7 +178,10 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
                 return pushes.isEmpty() ? null : pushes;
             }
             var op = opcode(cur);
-            if ((op & 0xcf) == 0xc5) {
+            if ((op & 0xcf) == 0xc5 && pushes.containsAll(List.of(0xc5, 0xd5, 0xe5))) {
+                // pushes after the saved registers are inner pushes
+                return pushes;
+            } else if ((op & 0xcf) == 0xc5) {
                 if (pushes.contains(op)) {
                     return null;
                 }
@@ -159,9 +216,9 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
         return true;
     }
 
-    // PUSH/POP rr, LD SP,nn, INC/DEC SP, ADD SP,e, LD HL,SP+e, LD SP,HL
+    // PUSH/POP rr, LD SP,nn, INC/DEC SP, ADD SP,e, LD HL,SP+e, LD SP,HL, ADD HL,SP, LD (nn),SP
     private static boolean changesStack(int op) {
-        return (op & 0xcb) == 0xc1 || op == 0x31 || op == 0x33 || op == 0x3b || op == 0xe8 || op == 0xf8 || op == 0xf9;
+        return (op & 0xcb) == 0xc1 || op == 0x31 || op == 0x33 || op == 0x3b || op == 0xe8 || op == 0xf8 || op == 0xf9 || op == 0x39 || op == 0x08;
     }
 
     private static boolean isReturn(int op) {
