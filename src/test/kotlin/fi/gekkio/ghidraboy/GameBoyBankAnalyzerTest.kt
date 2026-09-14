@@ -631,6 +631,92 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `helpers restoring BC, DE and HL use the callee-saved convention`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0700; RET / rst10: CALL $07A0; CALL $07C0; RET / rst18: CALL $0800; RET
+                hex("cd 00 07 c9").copyInto(rom, 0x0008)
+                hex("cd a0 07 cd c0 07 c9").copyInto(rom, 0x0010)
+                hex("cd 00 08 c9").copyInto(rom, 0x0018)
+                // LD DE,$14FF; loop: CALL $0780; DEC D; JR NZ,loop; RET
+                hex("11 ff 14 cd 80 07 15 20 fa c9").copyInto(rom, 0x0700)
+                // LD ($C839),A; PUSH BC; PUSH DE; PUSH HL; LD A,($C000); LD B,A; LD D,A; LD H,A; POP HL; POP DE; POP BC; RET
+                hex("ea 39 c8 c5 d5 e5 fa 00 c0 47 57 67 e1 d1 c1 c9").copyInto(rom, 0x0780)
+                // pops in push order
+                hex("c5 d5 e5 47 57 67 c1 d1 e1 c9").copyInto(rom, 0x07a0)
+                // RET Z before the pops
+                hex("c5 d5 e5 a7 c8 47 e1 d1 c1 c9").copyInto(rom, 0x07c0)
+                // BC and DE only
+                hex("c5 d5 47 57 d1 c1 c9").copyInto(rom, 0x0800)
+                // serial handler saving every register: JP $07E0 / PUSH AF; PUSH BC; PUSH DE; PUSH HL; POP HL; POP DE; POP BC; POP AF; RETI
+                hex("c3 e0 07").copyInto(rom, 0x0058)
+                hex("f5 c5 d5 e5 e1 d1 c1 f1 d9").copyInto(rom, 0x07e0)
+            },
+        ) { program ->
+            fun convention(offset: Long) = program.functionManager.getFunctionAt(program.addr(offset))?.callingConventionName
+            assertEquals("__asm_saved", convention(0x0780))
+            assertEquals(
+                listOf("__asm", "__asm", "__asm"),
+                listOf(0x07a0L, 0x07c0L, 0x0800L).map { convention(it)?.replace("unknown", "__asm") },
+            )
+            assertEquals("__interrupt", convention(0x07e0))
+            val caller = program.functionManager.getFunctionAt(program.addr(0x0700))
+            assertNotNull(caller)
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                val results = decompiler.decompileFunction(caller, 10, TaskMonitor.DUMMY)
+                val c = results.decompiledFunction?.c
+                assertTrue(c != null && c.contains("while") && !c.contains("extraout"), "${results.errorMessage}\n$c")
+            } finally {
+                decompiler.dispose()
+            }
+        }
+
+    @Test
+    fun `callee-saved inference rejects stack tricks, fall-through and imported signatures`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0820; CALL $0840; RET / rst10: CALL $084B; RET / rst18: CALL $0860; RET
+                hex("cd 20 08 cd 40 08 c9").copyInto(rom, 0x0008)
+                hex("cd 4b 08 c9").copyInto(rom, 0x0010)
+                hex("cd 60 08 c9").copyInto(rom, 0x0018)
+                // PUSH BC; PUSH DE; PUSH HL; LD DE,$1234; POP HL; PUSH DE; POP HL; POP DE; POP BC; RET
+                hex("c5 d5 e5 11 34 12 e1 d5 e1 d1 c1 c9").copyInto(rom, 0x0820)
+                // PUSH BC; PUSH DE; PUSH HL; LD A,($C000); DEC A; POP HL; POP DE; POP BC; RET Z / next: LD B,0; RET
+                hex("c5 d5 e5 fa 00 c0 3d e1 d1 c1 c8 06 00 c9").copyInto(rom, 0x0840)
+                // PUSH BC; PUSH DE; PUSH HL; LD B,A; POP HL; POP DE; POP BC; RET
+                hex("c5 d5 e5 47 e1 d1 c1 c9").copyInto(rom, 0x0860)
+            },
+        ) { program ->
+            fun convention(offset: Long) = program.functionManager.getFunctionAt(program.addr(offset))?.callingConventionName
+            assertNotNull(program.functionManager.getFunctionAt(program.addr(0x0820)))
+            assertFalse(convention(0x0820) == "__asm_saved", "stack trick")
+            assertNotNull(program.functionManager.getFunctionAt(program.addr(0x0840)))
+            assertNotNull(program.functionManager.getFunctionAt(program.addr(0x084b)))
+            assertFalse(convention(0x0840) == "__asm_saved", "fall-through")
+            assertEquals("__asm_saved", convention(0x0860))
+            val helper = program.functionManager.getFunctionAt(program.addr(0x0860))
+            program.withTransaction {
+                helper.updateFunction(
+                    "__asm",
+                    ReturnParameterImpl(ByteDataType.dataType, program),
+                    listOf(ParameterImpl("a", ByteDataType.dataType, program)),
+                    FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
+                    false,
+                    SourceType.IMPORTED,
+                )
+                GameBoyCalleeSavedAnalyzer().added(program, helper.body, TaskMonitor.DUMMY, MessageLog())
+            }
+            assertEquals("__asm", helper.callingConventionName, "imported")
+            assertEquals(SourceType.IMPORTED, helper.signatureSource)
+        }
+
+    @Test
     fun `dispatchers are not assumed without options`() =
         analyze("", "") { program ->
             assertTrue(program.refs(0x0158, RefType.CALL_OVERRIDE_UNCONDITIONAL).isEmpty())
