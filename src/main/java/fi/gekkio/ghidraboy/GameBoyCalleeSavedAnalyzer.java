@@ -19,16 +19,12 @@ import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSetView;
-import ghidra.program.model.data.Undefined1DataType;
 import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.Function.FunctionUpdateType;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
-import ghidra.program.model.listing.ReturnParameterImpl;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.util.exception.CancelledException;
-import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
 
@@ -67,14 +63,10 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
                     || !REPLACEABLE.contains(function.getCallingConventionName()) || !savesBcDeHl(program, function)) {
                 continue;
             }
-            var returnType = function.getReturnType();
-            if (returnType.getLength() > 1) {
-                returnType = Undefined1DataType.dataType;
-            }
+            // convention only: an uncommitted signature keeps parameters and return inferred
             try {
-                function.updateFunction(CONVENTION, new ReturnParameterImpl(returnType, program), List.of(function.getParameters()),
-                        FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, true, SourceType.ANALYSIS);
-            } catch (InvalidInputException | DuplicateNameException e) {
+                function.setCallingConvention(CONVENTION);
+            } catch (InvalidInputException e) {
                 log.appendMsg(NAME, "Could not set " + CONVENTION + " on " + function.getName() + ": " + e.getMessage());
             }
         }
