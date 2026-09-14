@@ -24,6 +24,7 @@ import ghidra.program.model.address.AddressSet
 import ghidra.program.model.data.ArrayDataType
 import ghidra.program.model.data.ByteDataType
 import ghidra.program.model.data.DataUtilities
+import ghidra.program.model.lang.InjectPayload
 import ghidra.program.model.listing.BookmarkType
 import ghidra.program.model.listing.FlowOverride
 import ghidra.program.model.listing.Function.FunctionUpdateType
@@ -31,6 +32,7 @@ import ghidra.program.model.listing.ParameterImpl
 import ghidra.program.model.listing.Program
 import ghidra.program.model.listing.ReturnParameterImpl
 import ghidra.program.model.pcode.HighFunction
+import ghidra.program.model.pcode.PcodeOp
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.util.task.TaskMonitor
@@ -523,6 +525,137 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                     c != null && c.contains("switch") && c.contains("FUN_0200") && c.contains("DAT_c001"),
                     "${results.errorMessage}\n$c",
                 )
+            } finally {
+                decompiler.dispose()
+            }
+        }
+
+    @Test
+    fun `inline jump table injection bounds the index by the marked cases`() =
+        analyze("", "0000") { program ->
+            assertEquals(setOf(program.addr(0x0170), program.addr(0x0174)), program.refs(0x015e, RefType.COMPUTED_JUMP))
+            val library = program.compilerSpec.pcodeInjectLibrary
+            val payload = library.getPayload(InjectPayload.CALLFIXUP_TYPE, GameBoyJumpTableAnalyzer.INLINE_TABLE_FIXUP)
+            val context =
+                library.buildInjectContext().apply {
+                    baseAddr = program.addr(0x015e)
+                    nextAddr = program.addr(0x015f)
+                    callAddr = program.addr(0x0000)
+                }
+            val ops = payload.getPcode(program, context)
+            val guard = ops.single { it.opcode == PcodeOp.INT_LESSEQUAL }
+            assertEquals(2L, guard.getInput(0).offset)
+            val branch = ops.single { it.opcode == PcodeOp.CBRANCH }
+            assertEquals(ops.indexOfFirst { it.opcode == PcodeOp.RETURN } - 1, branch.seqnum.time + branch.getInput(0).offset.toInt())
+            assertEquals(PcodeOp.BRANCHIND, ops.single { it.opcode == PcodeOp.BRANCHIND }.opcode)
+        }
+
+    @Test
+    fun `inline jump table injection bound counts table entries with repeated targets`() =
+        analyze(
+            "",
+            "0000",
+            rom().also { rom ->
+                // rst08: CALL $0600; RET
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD A,($C800); AND 3; RST 00; dw $0680, $0681, $0681, $0683
+                hex("fa 00 c8 e6 03 c7 80 06 81 06 81 06 83 06").copyInto(rom, 0x0600)
+                // NOP; NOP; NOP; RET
+                hex("00 00 00 c9").copyInto(rom, 0x0680)
+            },
+        ) { program ->
+            val targets = listOf(0x0680L, 0x0681L, 0x0683L).map { program.addr(it) }.toSet()
+            assertEquals(targets, program.refs(0x0605, RefType.COMPUTED_JUMP))
+            val library = program.compilerSpec.pcodeInjectLibrary
+            val payload = library.getPayload(InjectPayload.CALLFIXUP_TYPE, GameBoyJumpTableAnalyzer.INLINE_TABLE_FIXUP)
+            val context =
+                library.buildInjectContext().apply {
+                    baseAddr = program.addr(0x0605)
+                    nextAddr = program.addr(0x0606)
+                    callAddr = program.addr(0x0000)
+                }
+            val guard = payload.getPcode(program, context).single { it.opcode == PcodeOp.INT_LESSEQUAL }
+            // four entries, three distinct targets
+            assertEquals(4L, guard.getInput(0).offset)
+        }
+
+    @Test
+    fun `inline jump table injection with 256 entries needs no bound`() =
+        analyze(
+            "",
+            "0000",
+            rom().also { rom ->
+                // rst08: CALL $0800; RET
+                hex("cd 00 08 c9").copyInto(rom, 0x0008)
+                // LD A,($C800); RST 00; dw $0700 x 256
+                hex("fa 00 c8 c7").copyInto(rom, 0x0800)
+                ByteArray(512) { if (it % 2 == 0) 0x00 else 0x07 }.copyInto(rom, 0x0804)
+                hex("c9").copyInto(rom, 0x0700)
+            },
+        ) { program ->
+            assertEquals(
+                "word",
+                program.listing
+                    .getDataAt(program.addr(0x0a02))
+                    ?.dataType
+                    ?.name,
+            )
+            val library = program.compilerSpec.pcodeInjectLibrary
+            val payload = library.getPayload(InjectPayload.CALLFIXUP_TYPE, GameBoyJumpTableAnalyzer.INLINE_TABLE_FIXUP)
+            val context =
+                library.buildInjectContext().apply {
+                    baseAddr = program.addr(0x0803)
+                    nextAddr = program.addr(0x0804)
+                    callAddr = program.addr(0x0000)
+                }
+            // every 8-bit index is in range
+            assertTrue(payload.getPcode(program, context).none { it.opcode == PcodeOp.INT_LESSEQUAL })
+        }
+
+    @Test
+    fun `function jumping into another function's inline jump table decompiles the marked cases`() =
+        analyze(
+            "",
+            "0000",
+            rom().also { rom ->
+                // rst08: CALL $0600; CALL $0620; RET
+                hex("cd 00 06 cd 20 06 c9").copyInto(rom, 0x0008)
+                // F: LD A,($C800); RST 00; dw $0670, $0674 / a referenced word past the table into code
+                hex("fa 00 c8 c7 70 06 74 06 80 06").copyInto(rom, 0x0600)
+                // G: LD A,($C801); JP $0603
+                hex("fa 01 c8 c3 03 06").copyInto(rom, 0x0620)
+                // CALL $0200; RET / LD ($C001),A; RET
+                hex("cd 00 02 c9 ea 01 c0 c9").copyInto(rom, 0x0670)
+                // LD ($C0AA),A; RET
+                hex("ea aa c0 c9").copyInto(rom, 0x0680)
+            },
+            setup = { program ->
+                // the reference ends the table after two entries
+                program.referenceManager.addMemoryReference(
+                    program.addr(0x0150),
+                    program.addr(0x0608),
+                    RefType.DATA,
+                    SourceType.USER_DEFINED,
+                    0,
+                )
+            },
+        ) { program ->
+            val f = program.functionManager.getFunctionAt(program.addr(0x0600))
+            val g = program.functionManager.getFunctionAt(program.addr(0x0620))
+            assertNotNull(f)
+            assertNotNull(g)
+            val decompiler = DecompInterface()
+            try {
+                assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
+                for (function in listOf(f, g)) {
+                    val start = System.nanoTime()
+                    val results = decompiler.decompileFunction(function, 20, TaskMonitor.DUMMY)
+                    val seconds = (System.nanoTime() - start) / 1e9
+                    val c = results.decompiledFunction?.c
+                    assertTrue(results.decompileCompleted() && c != null, "${function.name} after ${seconds}s: ${results.errorMessage}")
+                    // only the marked cases, also without the owner's switch override
+                    assertTrue(c!!.contains("FUN_0200") && c.contains("DAT_c001") && !c.contains("DAT_c0aa"), "${function.name}: $c")
+                }
             } finally {
                 decompiler.dispose()
             }

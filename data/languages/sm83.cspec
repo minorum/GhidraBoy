@@ -177,12 +177,7 @@
   </prototype>
   <!-- inline jump table dispatcher: word table after the call, indexed by A -->
   <callfixup name="sm83_inline_jump_table">
-    <pcode>
-      <body><![CDATA[
-        SP = SP + 2;
-        local entry:2 = inst_next + zext(A) * 2;
-        goto [*:2 entry];
-      ]]></body>
+    <pcode dynamic="true">
     </pcode>
   </callfixup>
   <callotherfixup targetop="bank_ram">
