@@ -15,11 +15,14 @@ package fi.gekkio.ghidraboy
 
 import ghidra.app.decompiler.DecompInterface
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager
+import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.importer.ProgramLoader
 import ghidra.program.model.address.Address
+import ghidra.program.model.address.AddressSet
 import ghidra.program.model.listing.FlowOverride
 import ghidra.program.model.listing.Program
 import ghidra.program.model.symbol.RefType
+import ghidra.program.model.symbol.SourceType
 import ghidra.util.task.TaskMonitor
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -207,6 +210,23 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             assertEquals(setOf(program.addr(0x02a8), program.addr(0x02aa)), program.refs(0x0291, RefType.COMPUTED_JUMP))
             val namespaces = program.symbolTable.getSymbols(program.addr(0x0291)).map { it.parentNamespace.getName(true) }
             assertTrue(namespaces.none { it.contains("override") }, namespaces.toString())
+        }
+
+    @Test
+    fun `JP HL recovery keeps user computed references`() =
+        analyze("", "") { program ->
+            val from = program.addr(0x030e)
+            val id = program.startTransaction("refs")
+            try {
+                program.referenceManager.apply {
+                    addMemoryReference(from, program.addr(0x0001), RefType.COMPUTED_JUMP, SourceType.ANALYSIS, 0)
+                    addMemoryReference(from, program.addr(0x7fff), RefType.COMPUTED_JUMP, SourceType.USER_DEFINED, 0)
+                }
+                GameBoyJumpTableAnalyzer().added(program, AddressSet(from), TaskMonitor.DUMMY, MessageLog())
+            } finally {
+                program.endTransaction(id, true)
+            }
+            assertTrue(program.addr(0x7fff) in program.refs(0x030e, RefType.COMPUTED_JUMP))
         }
 
     @Test

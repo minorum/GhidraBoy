@@ -25,6 +25,8 @@ import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.lang.Language;
+import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.MemoryAccessException;
 
 import java.util.function.IntFunction;
 
@@ -104,5 +106,25 @@ public final class GameBoyEmulation {
             mapped = true;
             return true;
         }
+    }
+
+    static byte[] bankBytes(Program program, int bank) {
+        var memory = program.getMemory();
+        var banks = 1;
+        while (memory.getBlock("rom" + banks) != null) {
+            banks++;
+        }
+        // MBC wraps bank numbers past the ROM size
+        var block = memory.getBlock("rom" + bank % banks);
+        if (block == null) {
+            return null;
+        }
+        var bytes = new byte[(int) block.getSize()];
+        try {
+            block.getBytes(block.getStart(), bytes);
+        } catch (MemoryAccessException e) {
+            return null;
+        }
+        return bytes;
     }
 }

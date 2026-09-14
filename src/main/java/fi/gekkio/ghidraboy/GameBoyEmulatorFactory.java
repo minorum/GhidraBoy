@@ -23,7 +23,6 @@ import ghidra.pcode.emu.PcodeMachine;
 import ghidra.pcode.exec.trace.TraceEmulationIntegration.Writer;
 import ghidra.pcode.exec.trace.data.InternalPcodeTraceDataAccess;
 import ghidra.program.model.listing.Program;
-import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.trace.model.Trace;
 
 public class GameBoyEmulatorFactory implements EmulatorFactory {
@@ -40,7 +39,7 @@ public class GameBoyEmulatorFactory implements EmulatorFactory {
             var program = findProgram(data.getPlatform().getTrace(), data.getSnap());
             var register = program != null ? BankRegister.of(program) : null;
             if (register != null) {
-                callbacks = new ComposedPcodeEmulationCallbacks<>(callbacks, new GameBoyEmulation.BankSwitching(register, bank -> bankBytes(program, bank)));
+                callbacks = new ComposedPcodeEmulationCallbacks<>(callbacks, new GameBoyEmulation.BankSwitching(register, bank -> GameBoyEmulation.bankBytes(program, bank)));
             }
         }
         return new GameBoyEmulation.Emulator(access.getLanguage(), callbacks);
@@ -64,25 +63,5 @@ public class GameBoyEmulatorFactory implements EmulatorFactory {
             }
         }
         return null;
-    }
-
-    static byte[] bankBytes(Program program, int bank) {
-        var memory = program.getMemory();
-        var banks = 1;
-        while (memory.getBlock("rom" + banks) != null) {
-            banks++;
-        }
-        // MBC wraps bank numbers past the ROM size
-        var block = memory.getBlock("rom" + bank % banks);
-        if (block == null) {
-            return null;
-        }
-        var bytes = new byte[(int) block.getSize()];
-        try {
-            block.getBytes(block.getStart(), bytes);
-        } catch (MemoryAccessException e) {
-            return null;
-        }
-        return bytes;
     }
 }

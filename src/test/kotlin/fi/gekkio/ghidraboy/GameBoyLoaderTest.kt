@@ -89,6 +89,13 @@ class GameBoyLoaderTest : IntegrationTest() {
         )
 
     @Test
+    fun `ROM bank numbers wrap past the ROM size`() =
+        load(rom(0x10000).also { rom -> (1..3).forEach { rom[it * 0x4000] = it.toByte() } }) { program ->
+            assertEquals(1.toByte(), GameBoyEmulation.bankBytes(program, 5)?.get(0))
+            assertEquals(3.toByte(), GameBoyEmulation.bankBytes(program, 3)?.get(0))
+        }
+
+    @Test
     fun `cartridge RAM banks follow the header`() {
         assertEquals(mapOf("xram" to 0x2000L), blocks(rom(0x8000, mapOf(0x0149 to 0x02)), "xram"))
         assertEquals(
