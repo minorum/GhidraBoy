@@ -77,7 +77,8 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
             monitor.checkCancelled();
             var dispatcherAddress = inlineTableDispatcher(program, instr);
             if (dispatcherAddress != null) {
-                var targets = GameBoyBankAnalyzer.tableTargets(program, instr.getAddress(), instr.getMaxAddress().next());
+                var targets = GameBoyBankAnalyzer.tableTargets(program, instr.getAddress(), instr.getMaxAddress().next(),
+                        GameBoyBankAnalyzer.indexBound(program, instr));
                 var dispatcher = program.getFunctionManager().getFunctionAt(dispatcherAddress);
                 if (!targets.isEmpty() && dispatcher != null) {
                     dispatcher.setCallFixup(INLINE_TABLE_FIXUP);

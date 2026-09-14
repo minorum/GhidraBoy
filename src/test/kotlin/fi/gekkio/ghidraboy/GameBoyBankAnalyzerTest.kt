@@ -490,6 +490,30 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `inline jump table size follows the index bound`() =
+        analyze(
+            "",
+            "0000",
+            rom().also { rom ->
+                // rst08: CALL $0600; CALL $0700; RET
+                hex("cd 00 06 cd 00 07 c9").copyInto(rom, 0x0008)
+                // LD A,($C883); AND 3; RST 00; dw $0680, $0683, $0683, $0683; LD A,$3D; LD ($C884),A; RET
+                hex("fa 83 c8 e6 03 c7 80 06 83 06 83 06 83 06 3e 3d ea 84 c8 c9").copyInto(rom, 0x0600)
+                // RET / CALL $060E; RET
+                hex("c9 00 00 cd 0e 06 c9").copyInto(rom, 0x0680)
+                // LD A,($C883); CP 2; RET NC; RST 00; dw $0780, $0783; LD A,$3D; LD ($C884),A; RET
+                hex("fa 83 c8 fe 02 d0 c7 80 07 83 07 3e 3d ea 84 c8 c9").copyInto(rom, 0x0700)
+                // RET / CALL $070B; RET
+                hex("c9 00 00 cd 0b 07 c9").copyInto(rom, 0x0780)
+            },
+        ) { program ->
+            assertEquals(setOf(program.addr(0x0680), program.addr(0x0683)), program.refs(0x0605, RefType.COMPUTED_JUMP))
+            assertEquals("LD", program.listing.getInstructionAt(program.addr(0x060e))?.mnemonicString)
+            assertEquals(setOf(program.addr(0x0780), program.addr(0x0783)), program.refs(0x0706, RefType.COMPUTED_JUMP))
+            assertEquals("LD", program.listing.getInstructionAt(program.addr(0x070b))?.mnemonicString)
+        }
+
+    @Test
     fun `inline jump table cases do not see the dispatcher return address`() =
         analyze(
             "",

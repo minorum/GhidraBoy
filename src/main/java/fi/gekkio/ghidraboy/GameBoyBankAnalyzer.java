@@ -386,7 +386,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         if (table == null) {
             return;
         }
-        var targets = tableTargets(program, instr.getAddress(), table);
+        var targets = tableTargets(program, instr.getAddress(), table, indexBound(program, instr));
         if (targets.isEmpty()) {
             return;
         }
@@ -394,13 +394,57 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         markTable(program, instr.getAddress(), table, targets, disassemble, monitor, log);
     }
 
+    // entries allowed by AND n (n + 1 a power of two) or CP n; RET/JR/JP NC falling through into the dispatcher call
+    static int indexBound(Program program, Instruction call) {
+        var listing = program.getListing();
+        var refs = program.getReferenceManager();
+        var a = program.getRegister("A");
+        var cur = call;
+        try {
+            for (int i = 0; i < SCAN_LIMIT; i++) {
+                if (refs.hasReferencesTo(cur.getAddress())) {
+                    break;
+                }
+                var prev = listing.getInstructionBefore(cur.getAddress());
+                if (prev == null || !cur.getAddress().equals(prev.getFallThrough()) || prev.getFlowType().isCall()) {
+                    break;
+                }
+                var op = prev.getByte(0) & 0xff;
+                if (op == 0xe6) {
+                    var n = prev.getByte(1) & 0xff;
+                    return Integer.bitCount(n + 1) == 1 ? n + 1 : MAX_TABLE_ENTRIES;
+                }
+                if (op == 0xd0 || op == 0x30 || op == 0xd2) {
+                    var cp = listing.getInstructionBefore(prev.getAddress());
+                    if (cp != null && prev.getAddress().equals(cp.getFallThrough()) && !refs.hasReferencesTo(prev.getAddress())
+                            && (cp.getByte(0) & 0xff) == 0xfe && cp.getByte(1) != 0) {
+                        return cp.getByte(1) & 0xff;
+                    }
+                }
+                for (var pcode : prev.getPcode()) {
+                    if (pcode.getOutput() != null && overlaps(pcode.getOutput(), a)) {
+                        return MAX_TABLE_ENTRIES;
+                    }
+                }
+                cur = prev;
+            }
+        } catch (MemoryAccessException e) {
+            return MAX_TABLE_ENTRIES;
+        }
+        return MAX_TABLE_ENTRIES;
+    }
+
     static List<Address> tableTargets(Program program, Address from, Address table) {
+        return tableTargets(program, from, table, MAX_TABLE_ENTRIES);
+    }
+
+    static List<Address> tableTargets(Program program, Address from, Address table, int limit) {
         var memory = program.getMemory();
         var refs = program.getReferenceManager();
         var targets = new ArrayList<Address>();
         var overlaps = new ArrayList<Long>();
         var tableEnd = Long.MAX_VALUE;
-        for (int i = 0; i < MAX_TABLE_ENTRIES; i++) {
+        for (int i = 0; i < limit; i++) {
             Address entry;
             int word;
             try {
