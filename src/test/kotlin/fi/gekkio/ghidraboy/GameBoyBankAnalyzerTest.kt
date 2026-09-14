@@ -676,6 +676,47 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `callee-saved inference rejects stack tricks, fall-through and imported signatures`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // rst08: CALL $0820; CALL $0840; RET / rst10: CALL $084B; RET / rst18: CALL $0860; RET
+                hex("cd 20 08 cd 40 08 c9").copyInto(rom, 0x0008)
+                hex("cd 4b 08 c9").copyInto(rom, 0x0010)
+                hex("cd 60 08 c9").copyInto(rom, 0x0018)
+                // PUSH BC; PUSH DE; PUSH HL; LD DE,$1234; POP HL; PUSH DE; POP HL; POP DE; POP BC; RET
+                hex("c5 d5 e5 11 34 12 e1 d5 e1 d1 c1 c9").copyInto(rom, 0x0820)
+                // PUSH BC; PUSH DE; PUSH HL; LD A,($C000); DEC A; POP HL; POP DE; POP BC; RET Z / next: LD B,0; RET
+                hex("c5 d5 e5 fa 00 c0 3d e1 d1 c1 c8 06 00 c9").copyInto(rom, 0x0840)
+                // PUSH BC; PUSH DE; PUSH HL; LD B,A; POP HL; POP DE; POP BC; RET
+                hex("c5 d5 e5 47 e1 d1 c1 c9").copyInto(rom, 0x0860)
+            },
+        ) { program ->
+            fun convention(offset: Long) = program.functionManager.getFunctionAt(program.addr(offset))?.callingConventionName
+            assertNotNull(program.functionManager.getFunctionAt(program.addr(0x0820)))
+            assertFalse(convention(0x0820) == "__asm_saved", "stack trick")
+            assertNotNull(program.functionManager.getFunctionAt(program.addr(0x0840)))
+            assertNotNull(program.functionManager.getFunctionAt(program.addr(0x084b)))
+            assertFalse(convention(0x0840) == "__asm_saved", "fall-through")
+            assertEquals("__asm_saved", convention(0x0860))
+            val helper = program.functionManager.getFunctionAt(program.addr(0x0860))
+            program.withTransaction {
+                helper.updateFunction(
+                    "__asm",
+                    ReturnParameterImpl(ByteDataType.dataType, program),
+                    listOf(ParameterImpl("a", ByteDataType.dataType, program)),
+                    FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
+                    false,
+                    SourceType.IMPORTED,
+                )
+                GameBoyCalleeSavedAnalyzer().added(program, helper.body, TaskMonitor.DUMMY, MessageLog())
+            }
+            assertEquals("__asm", helper.callingConventionName, "imported")
+            assertEquals(SourceType.IMPORTED, helper.signatureSource)
+        }
+
+    @Test
     fun `dispatchers are not assumed without options`() =
         analyze("", "") { program ->
             assertTrue(program.refs(0x0158, RefType.CALL_OVERRIDE_UNCONDITIONAL).isEmpty())

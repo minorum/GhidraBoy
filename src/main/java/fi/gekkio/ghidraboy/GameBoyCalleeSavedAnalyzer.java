@@ -17,6 +17,7 @@ import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.data.Undefined1DataType;
 import ghidra.program.model.listing.Function;
@@ -32,6 +33,7 @@ import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -59,7 +61,8 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
     public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log) throws CancelledException {
         for (var function : program.getFunctionManager().getFunctions(set, true)) {
             monitor.checkCancelled();
-            if (function.getSignatureSource() == SourceType.USER_DEFINED || !REPLACEABLE.contains(function.getCallingConventionName()) || !savesBcDeHl(program, function)) {
+            if (function.getSignatureSource().isHigherPriorityThan(SourceType.ANALYSIS) || function.hasCustomVariableStorage()
+                    || !REPLACEABLE.contains(function.getCallingConventionName()) || !savesBcDeHl(program, function)) {
                 continue;
             }
             var returnType = function.getReturnType();
@@ -76,16 +79,18 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
         return true;
     }
 
-    // ponytail: matches entry pushes and the pops right before each return, not stack depth through the body
+    // ponytail: no stack depth tracking, any other PUSH/POP or SP change rejects; track depth to allow balanced inner pairs
     static boolean savesBcDeHl(Program program, Function function) {
-        var pushes = entryPushes(program, function);
+        var matched = new HashSet<Address>();
+        var pushes = entryPushes(program, function, matched);
         if (pushes == null || !pushes.contains(0xc5) || !pushes.contains(0xd5) || !pushes.contains(0xe5)) {
             return false;
         }
         var body = function.getBody();
         for (var instr : program.getListing().getInstructions(body, true)) {
             var flow = instr.getFlowType();
-            if (flow.isComputed()) {
+            var next = instr.getFallThrough();
+            if (flow.isComputed() || (next != null && !body.contains(next))) {
                 return false;
             }
             if (flow.isJump()) {
@@ -95,7 +100,12 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
                     }
                 }
             }
-            if (isReturn(opcode(instr)) && !popsBefore(program, instr, pushes)) {
+            if (isReturn(opcode(instr)) && !popsBefore(program, instr, pushes, matched)) {
+                return false;
+            }
+        }
+        for (var instr : program.getListing().getInstructions(body, true)) {
+            if (!matched.contains(instr.getAddress()) && changesStack(opcode(instr))) {
                 return false;
             }
         }
@@ -103,7 +113,7 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
     }
 
     // PUSH opcodes in execution order; null when BC, DE, HL or SP change before them
-    private static List<Integer> entryPushes(Program program, Function function) {
+    private static List<Integer> entryPushes(Program program, Function function, Set<Address> matched) {
         var listing = program.getListing();
         var refs = program.getReferenceManager();
         var pushes = new ArrayList<Integer>();
@@ -118,6 +128,7 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
                     return null;
                 }
                 pushes.add(op);
+                matched.add(cur.getAddress());
             } else if (!pushes.isEmpty()) {
                 return pushes;
             } else if (i >= PREFIX_LIMIT || cur.getFlows().length != 0 || !cur.getFlowType().isFallthrough() || writesSaved(program, cur)) {
@@ -129,7 +140,7 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
     }
 
     // POPs matching pushes in reverse order fall through into ret
-    private static boolean popsBefore(Program program, Instruction ret, List<Integer> pushes) {
+    private static boolean popsBefore(Program program, Instruction ret, List<Integer> pushes, Set<Address> matched) {
         var listing = program.getListing();
         var refs = program.getReferenceManager();
         var cur = ret;
@@ -141,9 +152,15 @@ public class GameBoyCalleeSavedAnalyzer extends AbstractAnalyzer {
             if (k < pushes.size() - 1 && refs.hasReferencesTo(prev.getAddress())) {
                 return false;
             }
+            matched.add(prev.getAddress());
             cur = prev;
         }
         return true;
+    }
+
+    // PUSH/POP rr, LD SP,nn, INC/DEC SP, ADD SP,e, LD HL,SP+e, LD SP,HL
+    private static boolean changesStack(int op) {
+        return (op & 0xcb) == 0xc1 || op == 0x31 || op == 0x33 || op == 0x3b || op == 0xe8 || op == 0xf8 || op == 0xf9;
     }
 
     private static boolean isReturn(int op) {
