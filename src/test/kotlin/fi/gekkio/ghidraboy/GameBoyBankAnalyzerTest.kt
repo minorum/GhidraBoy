@@ -77,6 +77,11 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             hex("a8 02 aa 02").copyInto(rom, 0x02a0)
             hex("c9").copyInto(rom, 0x02a8)
             hex("c9").copyInto(rom, 0x02aa)
+            // timer handler: JP (HL) table after its targets, followed by a word into LD A,(nn)
+            hex("c3 10 04").copyInto(rom, 0x0050)
+            hex("18 fe 18 fe").copyInto(rom, 0x0400)
+            hex("fa 00 c0 87 5f 16 00 21 20 04 19 2a 66 6f e9").copyInto(rom, 0x0410)
+            hex("00 04 02 04 11 04").copyInto(rom, 0x0420)
             hex("c9").copyInto(rom, 0x8000)
             hex("c9").copyInto(rom, 0xc010)
         }
@@ -228,6 +233,12 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                 decompiler.dispose()
             }
             assertNotNull(program.listing.getInstructionAt(program.addr(0x031e)))
+        }
+
+    @Test
+    fun `JP HL table ends at a word into the middle of an instruction`() =
+        analyze("", "") { program ->
+            assertEquals(setOf(program.addr(0x0400), program.addr(0x0402)), program.refs(0x041e, RefType.COMPUTED_JUMP))
         }
 
     @Test

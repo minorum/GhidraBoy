@@ -295,6 +295,11 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             if (target == null) {
                 break;
             }
+            // tables end before words into the middle of known code
+            var code = program.getListing().getInstructionContaining(target);
+            if (code != null && !code.getAddress().equals(target)) {
+                break;
+            }
             if (target.getAddressSpace().equals(table.getAddressSpace()) && target.getOffset() > table.getOffset()) {
                 tableEnd = Math.min(tableEnd, target.getOffset());
             }
