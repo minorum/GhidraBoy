@@ -38,15 +38,13 @@ public class GameBoyRamBankAnalyzer extends AbstractAnalyzer {
 
     @Override
     public boolean canAnalyze(Program program) {
-        return "SM83".equals(program.getLanguage().getProcessor().toString());
+        var memory = program.getMemory();
+        return "SM83".equals(program.getLanguage().getProcessor().toString())
+                && (memory.getBlock("wram2") != null || memory.getBlock("vram1") != null);
     }
 
     @Override
     public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log) throws CancelledException {
-        var memory = program.getMemory();
-        if (memory.getBlock("wram2") == null && memory.getBlock("vram1") == null) {
-            return false;
-        }
         // constant propagation revisits whole function bodies
         var scope = new AddressSet(set);
         var functions = program.getFunctionManager().getFunctionsOverlapping(set);
@@ -63,35 +61,34 @@ public class GameBoyRamBankAnalyzer extends AbstractAnalyzer {
     // SVBK selects WRAM bank 1-7 at 0xD000, VBK selects VRAM bank 0-1
     private static void retarget(Program program, Instruction instr) {
         var refs = program.getReferenceManager();
+        var ram = program.getAddressFactory().getDefaultAddressSpace();
         for (var ref : refs.getReferencesFrom(instr.getAddress())) {
-            var to = ref.getToAddress();
-            if (!ref.isMemoryReference() || ref.getSource() == SourceType.USER_DEFINED || to.getAddressSpace().isOverlaySpace()) {
+            if (!ref.isMemoryReference() || ref.getSource() == SourceType.USER_DEFINED) {
                 continue;
             }
-            var offset = to.getOffset();
-            String name;
+            var offset = ref.getToAddress().getOffset();
+            String name = null;
             if (offset >= 0xd000 && offset < 0xe000) {
                 var svbk = GameBoyBankAnalyzer.lastWrite(program, instr, address -> address == 0xff70);
-                if (svbk == null || svbk.value() == null) {
-                    continue;
+                if (svbk != null && svbk.value() != null) {
+                    name = "wram" + Math.max(svbk.value() & 7, 1);
                 }
-                name = "wram" + Math.max(svbk.value() & 7, 1);
             } else if (offset >= 0x8000 && offset < 0xa000) {
                 var vbk = GameBoyBankAnalyzer.lastWrite(program, instr, address -> address == 0xff4f);
-                if (vbk == null || vbk.value() == null) {
-                    continue;
+                if (vbk != null && vbk.value() != null) {
+                    name = "vram" + (vbk.value() & 1);
                 }
-                name = "vram" + (vbk.value() & 1);
             } else {
                 continue;
             }
-            // WRAM bank 1 and VRAM bank 0 are in the default space
-            var block = program.getMemory().getBlock(name);
-            if (block == null || !block.isOverlay()) {
+            // WRAM bank 1, VRAM bank 0 and unknown banks are in the default space
+            var block = name == null ? null : program.getMemory().getBlock(name);
+            var target = block != null && block.isOverlay() ? block.getStart().getAddressSpace().getAddress(offset) : ram.getAddress(offset);
+            if (target.equals(ref.getToAddress())) {
                 continue;
             }
             refs.delete(ref);
-            var bankRef = refs.addMemoryReference(ref.getFromAddress(), block.getStart().getAddressSpace().getAddress(offset), ref.getReferenceType(), SourceType.ANALYSIS, ref.getOperandIndex());
+            var bankRef = refs.addMemoryReference(ref.getFromAddress(), target, ref.getReferenceType(), SourceType.ANALYSIS, ref.getOperandIndex());
             refs.setPrimary(bankRef, ref.isPrimary());
         }
     }

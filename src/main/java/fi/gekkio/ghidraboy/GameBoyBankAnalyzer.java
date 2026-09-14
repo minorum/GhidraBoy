@@ -197,6 +197,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
     // ponytail: backward scan of the fall-through chain only, SymbolicPropogator if values come from memory or other blocks
     static Write lastWrite(Program program, Instruction instr, LongPredicate target) {
         var a = program.getRegister("A");
+        var sp = program.getRegister("SP");
         var listing = program.getListing();
         var refs = program.getReferenceManager();
         var cur = instr;
@@ -214,6 +215,10 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             var copiesOfA = new HashSet<Varnode>();
             for (var op : prev.getPcode()) {
                 if (pending == null) {
+                    // ponytail: indirect stores end the scan, track HL/C constants if games switch banks through them
+                    if (op.getOpcode() == PcodeOp.STORE && constant(op.getInput(1), constants) == null && !isRegister(op.getInput(1), sp)) {
+                        return new Write(-1, null);
+                    }
                     var written = addressWrittenFrom(op, a, constants, copiesOfA);
                     if (written != null && target.test(written)) {
                         pending = written;

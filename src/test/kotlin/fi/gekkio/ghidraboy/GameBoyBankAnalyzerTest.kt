@@ -13,6 +13,7 @@
 // limitations under the License.
 package fi.gekkio.ghidraboy
 
+import ghidra.app.cmd.disassemble.DisassembleCommand
 import ghidra.app.decompiler.DecompInterface
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager
 import ghidra.app.util.importer.MessageLog
@@ -25,6 +26,7 @@ import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.util.task.TaskMonitor
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -112,6 +114,7 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                 3e 01 ea 4f ff ea 00 80
                 3e 00 e0 70 fa a1 d9
                 fa 00 c0 e0 70 fa a1 d9
+                3e 03 e0 70 0e 70 3e 02 e2 fa a1 d9
                 18 fe
                 """,
             ).copyInto(rom, 0x0150)
@@ -202,7 +205,33 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             assertEquals(listOf("ram:d9a1"), dataRefs(0x0163))
             // SVBK from memory
             assertEquals(listOf("ram:d9a1"), dataRefs(0x016b))
+            // LDH (C),A after a constant SVBK write
+            assertEquals(listOf("ram:d9a1"), dataRefs(0x0177))
         }
+
+    @Test
+    fun `edited SVBK constant moves the RAM reference`() =
+        analyze("", "", cgbRom()) { program ->
+            program.withTransaction {
+                program.listing.clearCodeUnits(program.addr(0x0150), program.addr(0x0151), false)
+                program.memory.setByte(program.addr(0x0151), 5.toByte())
+                DisassembleCommand(program.addr(0x0150), AddressSet(program.addr(0x0150), program.addr(0x0151)), false).applyTo(program)
+                GameBoyRamBankAnalyzer().added(program, AddressSet(program.addr(0x0154)), TaskMonitor.DUMMY, MessageLog())
+            }
+            assertEquals(
+                listOf("wram5::d9a1"),
+                program.referenceManager
+                    .getReferencesFrom(program.addr(0x0154))
+                    .filter { it.referenceType.isData }
+                    .map { it.toAddress.toString(true) },
+            )
+        }
+
+    @Test
+    fun `RAM bank analyzer only applies to CGB programs`() {
+        analyze("", "") { program -> assertFalse(GameBoyRamBankAnalyzer().canAnalyze(program)) }
+        analyze("", "", cgbRom()) { program -> assertTrue(GameBoyRamBankAnalyzer().canAnalyze(program)) }
+    }
 
     @Test
     fun `inline far call dispatcher`() =
