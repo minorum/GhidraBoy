@@ -44,7 +44,7 @@ class DecompilerTest : IntegrationTest() {
                 """
                 LD A, 0x55
                 INC A
-                LD (0x1234), A
+                LD (0xc234), A
                 RET
                 """.trimIndent(),
             )
@@ -53,8 +53,31 @@ class DecompilerTest : IntegrationTest() {
             """
             void FUN_0000(void)
             {
-                DAT_1234 = 0x56;
+                DAT_c234 = 0x56;
                 return;
+            }
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `MBC register writes decompile as mbc_write`() {
+        val f =
+            assembleFunction(
+                address(0x0000),
+                """
+                LD A, 0x01
+                LD (0x2000), A
+                RET
+                """.trimIndent(),
+            )
+        assertDecompiled(
+            f,
+            """
+            undefined1 FUN_0000(void)
+            {
+                mbc_write(0x2000,1);
+                return 1;
             }
             """.trimIndent(),
         )

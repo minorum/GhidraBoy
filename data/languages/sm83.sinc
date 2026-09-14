@@ -51,6 +51,7 @@ define token data8 (8)
 define token data16 (16)
   imm16 = (0,15)
   imm16_hi4 = (12,15)
+  imm16_hi1 = (15,15)
 ;
 
 attach variables [ reg0_3 reg3_3 ] [ B C D E H L _ A ];
@@ -126,6 +127,8 @@ define pcodeop bank_ram;
 define pcodeop IME;
 define pcodeop halt;
 define pcodeop stop;
+# cartridge MBC register write: address, value
+define pcodeop mbc_write;
 
 macro push16(val16) {
   SP = SP - 2;
