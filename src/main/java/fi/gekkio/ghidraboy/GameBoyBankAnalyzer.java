@@ -218,8 +218,7 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         if (!instr.getFlowType().isCall()) {
             instr.setFlowOverride(FlowOverride.CALL_RETURN);
         }
-        addPrimaryReference(program, instr.getAddress(), target, RefType.CALL_OVERRIDE_UNCONDITIONAL);
-        // the default-space flow error no longer applies
+        addPrimaryReference(program, instr.getAddress(), target, RefType.CALL_OVERRIDE_UNCONDITIONAL);        // the default-space flow error no longer applies
         var bookmarks = program.getBookmarkManager();
         for (var bookmark : bookmarks.getBookmarks(instr.getAddress())) {
             if (bookmark.getComment().contains("non-existing memory")) {

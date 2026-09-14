@@ -734,7 +734,12 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             val decompiler = DecompInterface()
             try {
                 assertTrue(decompiler.openProgram(program), decompiler.lastMessage)
-                val results = decompiler.decompileFunction(program.functionManager.getFunctionAt(program.addr(0x0600)), 10, TaskMonitor.DUMMY)
+                val results =
+                    decompiler.decompileFunction(
+                        program.functionManager.getFunctionAt(program.addr(0x0600)),
+                        10,
+                        TaskMonitor.DUMMY,
+                    )
                 val c = results.decompiledFunction?.c
                 assertTrue(c != null && c.contains("hram_code_ff80") && !c.contains("halt_baddata"), "${results.errorMessage}\n$c")
             } finally {
@@ -748,6 +753,8 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             "",
             "",
             rom().also { rom ->
+                // CGB: the RAM bank analyzer sees references into 0xD000-0xDFFF
+                rom[0x0143] = 0x80.toByte()
                 hex("cd 00 06 c9").copyInto(rom, 0x0008)
                 // LD HL,$0700; LD DE,$DCA8; LD BC,4; CALL copy; JP $DCA8
                 hex("21 00 07 11 a8 dc 01 04 00 cd 73 0e c3 a8 dc").copyInto(rom, 0x0600)
