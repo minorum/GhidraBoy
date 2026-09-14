@@ -41,9 +41,12 @@ import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.LongPredicate;
 
 public class GameBoyBankAnalyzer extends AbstractAnalyzer {
     static final String NAME = "Game Boy Bank Switching";
@@ -167,19 +170,39 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
         }
     }
 
-    // ponytail: backward scan of the fall-through chain only, SymbolicPropogator if bank values come from memory or other blocks
     private static Integer findBank(Program program, Instruction instr, BankRegister register, int banks) {
+        var low = lastWrite(program, instr, address -> register.contains(address) && !register.containsHigh(address));
+        if (low == null || low.value() == null) {
+            return null;
+        }
+        var bank = register.apply(0, low.address(), low.value());
+        // upper bits wrap away on ROMs the low register covers
+        if (banks > register.mask() + 1) {
+            var high = lastWrite(program, instr, register::containsHigh);
+            if (high != null) {
+                if (high.value() == null) {
+                    return null;
+                }
+                bank = register.apply(bank, high.address(), high.value());
+            }
+        }
+        // unseen upper bits stay 0
+        return bank;
+    }
+
+    // value is null when A is not a constant
+    record Write(long address, Integer value) {
+    }
+
+    // ponytail: backward scan of the fall-through chain only, SymbolicPropogator if values come from memory or other blocks
+    static Write lastWrite(Program program, Instruction instr, LongPredicate target) {
         var a = program.getRegister("A");
         var listing = program.getListing();
         var refs = program.getReferenceManager();
         var cur = instr;
-        var bank = 0;
-        var low = false;
-        // upper bits wrap away on ROMs the low register covers
-        var high = banks <= register.mask() + 1;
         Long pending = null;
-        for (int i = 0; i < SCAN_LIMIT && !(low && high); i++) {
-            // another path may reach cur with a different bank or A
+        for (int i = 0; i < SCAN_LIMIT; i++) {
+            // another path may reach cur with a different A
             if (refs.hasReferencesTo(cur.getAddress())) {
                 break;
             }
@@ -187,36 +210,62 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             if (prev == null || !cur.getAddress().equals(prev.getFallThrough()) || prev.getFlowType().isCall()) {
                 break;
             }
+            var constants = new HashMap<Varnode, Long>();
+            var copiesOfA = new HashSet<Varnode>();
             for (var op : prev.getPcode()) {
                 if (pending == null) {
-                    var written = addressWrittenFrom(op, a);
-                    // the latest write to each register wins
-                    if (written != null && register.contains(written) && !(register.containsHigh(written) ? high : low)) {
+                    var written = addressWrittenFrom(op, a, constants, copiesOfA);
+                    if (written != null && target.test(written)) {
                         pending = written;
                     }
                 } else if (op.getOutput() != null && overlaps(op.getOutput(), a)) {
-                    if (op.getOpcode() != PcodeOp.COPY || !op.getInput(0).isConstant()) {
-                        return null;
-                    }
-                    bank = register.apply(bank, pending, (int) op.getInput(0).getOffset());
-                    if (register.containsHigh(pending)) {
-                        high = true;
-                    } else {
-                        low = true;
-                    }
-                    pending = null;
+                    var constant = op.getOpcode() == PcodeOp.COPY && op.getInput(0).isConstant();
+                    return new Write(pending, constant ? (int) op.getInput(0).getOffset() : null);
                 }
+                fold(op, constants, copiesOfA, a);
             }
             cur = prev;
         }
-        // unseen upper bits stay 0
-        return low && pending == null ? bank : null;
+        return pending == null ? null : new Write(pending, null);
     }
 
-    // LD (nn),A is a STORE through a constant or a COPY into a memory varnode
-    private static Long addressWrittenFrom(PcodeOp op, ghidra.program.model.lang.Register register) {
-        if (op.getOpcode() == PcodeOp.STORE && op.getInput(1).isConstant() && isRegister(op.getInput(2), register)) {
-            return op.getInput(1).getOffset();
+    // constant temporaries such as LDH's 0xff00 | zext(n), and copies of A
+    private static void fold(PcodeOp op, Map<Varnode, Long> constants, Set<Varnode> copiesOfA, ghidra.program.model.lang.Register a) {
+        var out = op.getOutput();
+        if (out == null || !out.isUnique()) {
+            return;
+        }
+        constants.remove(out);
+        copiesOfA.remove(out);
+        if (op.getOpcode() == PcodeOp.COPY && isRegister(op.getInput(0), a)) {
+            copiesOfA.add(out);
+            return;
+        }
+        var inputs = new long[op.getNumInputs()];
+        for (int i = 0; i < inputs.length; i++) {
+            var value = constant(op.getInput(i), constants);
+            if (value == null) {
+                return;
+            }
+            inputs[i] = value;
+        }
+        switch (op.getOpcode()) {
+            case PcodeOp.COPY, PcodeOp.INT_ZEXT -> constants.put(out, inputs[0]);
+            case PcodeOp.INT_OR -> constants.put(out, inputs[0] | inputs[1]);
+            case PcodeOp.INT_ADD -> constants.put(out, inputs[0] + inputs[1]);
+            default -> {
+            }
+        }
+    }
+
+    private static Long constant(Varnode varnode, Map<Varnode, Long> constants) {
+        return varnode.isConstant() ? Long.valueOf(varnode.getOffset()) : constants.get(varnode);
+    }
+
+    // LD (nn),A and LDH (n),A are a STORE through a constant or a COPY into a memory varnode
+    private static Long addressWrittenFrom(PcodeOp op, ghidra.program.model.lang.Register register, Map<Varnode, Long> constants, Set<Varnode> copiesOfA) {
+        if (op.getOpcode() == PcodeOp.STORE && (isRegister(op.getInput(2), register) || copiesOfA.contains(op.getInput(2)))) {
+            return constant(op.getInput(1), constants);
         }
         if (op.getOpcode() == PcodeOp.COPY && op.getOutput() != null && op.getOutput().isAddress() && isRegister(op.getInput(0), register)) {
             return op.getOutput().getOffset();

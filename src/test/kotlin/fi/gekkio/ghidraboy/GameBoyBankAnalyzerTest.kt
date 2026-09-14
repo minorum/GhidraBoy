@@ -99,6 +99,24 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             (0x4000 until size step 0x4000).forEach { rom[it] = 0xc9.toByte() }
         }
 
+    // CGB ROM reading switchable WRAM and writing VRAM after SVBK/VBK writes
+    private fun cgbRom(): ByteArray =
+        ByteArray(0x8000) { 0xff.toByte() }.also { rom ->
+            hex("00 c3 50 01").copyInto(rom, 0x0100)
+            ROM_LOGO.copyInto(rom, 0x0104)
+            ByteArray(0x0150 - 0x0134).copyInto(rom, 0x0134)
+            rom[0x0143] = 0x80.toByte()
+            hex(
+                """
+                3e 03 e0 70 fa a1 d9
+                3e 01 ea 4f ff ea 00 80
+                3e 00 e0 70 fa a1 d9
+                fa 00 c0 e0 70 fa a1 d9
+                18 fe
+                """,
+            ).copyInto(rom, 0x0150)
+        }
+
     private fun analyze(
         farCalls: String,
         jumpTables: String,
@@ -166,6 +184,24 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
     fun `upper bank bits wrap on small ROMs`() =
         analyze("", "", mbc1Rom(0x10000)) { program ->
             assertEquals(setOf(program.bankAddr(1, 0x4000)), program.refs(0x015a, RefType.CALL_OVERRIDE_UNCONDITIONAL))
+        }
+
+    @Test
+    fun `SVBK and VBK writes resolve RAM references into the selected bank`() =
+        analyze("", "", cgbRom()) { program ->
+            fun dataRefs(from: Long) =
+                program.referenceManager
+                    .getReferencesFrom(program.addr(from))
+                    .filter { it.referenceType.isData }
+                    .map { it.toAddress.toString(true) }
+            // LDH ($70),A with A=3
+            assertEquals(listOf("wram3::d9a1"), dataRefs(0x0154))
+            // LD ($FF4F),A with A=1
+            assertEquals(listOf("vram1::8000"), dataRefs(0x015c))
+            // SVBK 0 selects bank 1
+            assertEquals(listOf("ram:d9a1"), dataRefs(0x0163))
+            // SVBK from memory
+            assertEquals(listOf("ram:d9a1"), dataRefs(0x016b))
         }
 
     @Test

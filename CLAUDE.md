@@ -21,9 +21,9 @@ Ghidra version, release name and the zip filename are read from `$GHIDRA_INSTALL
 
 ## Architecture
 
-**Loader**: banked ROMs (> 32 kB), cartridge RAM banks and CGB VRAM/WRAM banks are modelled as Ghidra overlay blocks (`romN`, `xramN`, `wramN`).
+**Loader**: banked ROMs (> 32 kB), cartridge RAM banks and CGB VRAM/WRAM banks are modelled as Ghidra overlay blocks (`romN`, `xramN`, `wramN`, `vram1`); `rom0`, `xram0`, `wram1` and `vram0` stay in the default space so absolute references resolve.
 
-**Bank switching**: `GameBoyBankAnalyzer` adds override references from bank 0 calls/jumps into `romN` after `LD A,n` + a write to the MBC bank register (`BankRegister`, decoded from header byte 0x147), and handles game-specific inline far call / jump table dispatchers configured by address in its analysis options (empty by default).
+**Bank switching**: `GameBoyBankAnalyzer` adds override references from bank 0 calls/jumps into `romN` after `LD A,n` + a write to the MBC bank register (`BankRegister`, decoded from header byte 0x147), and handles game-specific inline far call / jump table dispatchers configured by address in its analysis options (empty by default). `GameBoyRamBankAnalyzer` moves CGB RAM references into `wramN`/`vram1` after constant `SVBK`/`VBK` writes; it runs after reference analysis because constant propagation re-adds default-space references.
 
 **Emulation**: `GameBoyEmulation` has the userop library for `IME`/`halt`/`stop` and bank-switch callbacks; `GameBoyEmulatorFactory` plugs them into the Debugger. Debug jars are compile-only, so tests exercise `GameBoyEmulation` directly and never load the factory.
 
