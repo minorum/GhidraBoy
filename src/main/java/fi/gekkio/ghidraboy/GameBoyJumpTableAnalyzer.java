@@ -105,6 +105,7 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
     // unresolved, or resolved by other analyzers past the end of the table
     private static boolean needsRecovery(Program program, Address from, List<Address> targets) {
         var found = false;
+        var stale = false;
         for (var ref : program.getReferenceManager().getReferencesFrom(from)) {
             if (!ref.getReferenceType().isComputed()) {
                 continue;
@@ -112,12 +113,10 @@ public class GameBoyJumpTableAnalyzer extends AbstractAnalyzer {
             if (ref.getSource() != SourceType.ANALYSIS) {
                 return false;
             }
-            if (!targets.contains(ref.getToAddress())) {
-                return true;
-            }
+            stale |= !targets.contains(ref.getToAddress());
             found = true;
         }
-        return !found;
+        return stale || !found;
     }
 
     private static void removeComputedReferences(Program program, Address from) {

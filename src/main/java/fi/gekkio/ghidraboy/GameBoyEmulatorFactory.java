@@ -67,7 +67,13 @@ public class GameBoyEmulatorFactory implements EmulatorFactory {
     }
 
     static byte[] bankBytes(Program program, int bank) {
-        var block = program.getMemory().getBlock("rom" + bank);
+        var memory = program.getMemory();
+        var banks = 1;
+        while (memory.getBlock("rom" + banks) != null) {
+            banks++;
+        }
+        // MBC wraps bank numbers past the ROM size
+        var block = memory.getBlock("rom" + bank % banks);
         if (block == null) {
             return null;
         }
