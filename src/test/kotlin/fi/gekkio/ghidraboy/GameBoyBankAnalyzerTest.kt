@@ -330,6 +330,26 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `inline jump table decoded as fall-through code over its first target`() =
+        // serial handler: PUSH AF; PUSH HL; LD A,($C853); AND 3; RST 00; dw $10C1, $10E7, $10F6, $1127
+        // table bytes decode as POP BC / STOP / STOP / STOP / LD DE,$013E over $10C1
+        analyze(
+            "",
+            "0000",
+            rom().also { rom ->
+                hex("c3 b1 10").copyInto(rom, 0x0058)
+                hex("f5 e5 fa 53 c8 e6 03 c7 c1 10 e7 10 f6 10 27 11 3e 01 c9").copyInto(rom, 0x10b1)
+                listOf(0x10e7, 0x10f6, 0x1127).forEach { rom[it] = 0xc9.toByte() }
+            },
+        ) { program ->
+            assertEquals(
+                setOf(0x10c1L, 0x10e7L, 0x10f6L, 0x1127L).map { program.addr(it) }.toSet(),
+                program.refs(0x10b8, RefType.COMPUTED_JUMP),
+            )
+            assertEquals("LD", program.listing.getInstructionAt(program.addr(0x10c1))?.mnemonicString)
+        }
+
+    @Test
     fun `unguarded JP HL jump table`() =
         analyze("", "") { program ->
             assertEquals(setOf(program.addr(0x0318), program.addr(0x031c)), program.refs(0x030e, RefType.COMPUTED_JUMP))
