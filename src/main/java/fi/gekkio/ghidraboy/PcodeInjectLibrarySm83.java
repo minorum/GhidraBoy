@@ -16,11 +16,14 @@ package fi.gekkio.ghidraboy;
 import ghidra.app.plugin.processors.sleigh.SleighLanguage;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
+import ghidra.program.model.address.AddressOverflowException;
+import ghidra.program.model.data.WordDataType;
 import ghidra.program.model.lang.InjectContext;
 import ghidra.program.model.lang.InjectPayload;
 import ghidra.program.model.lang.InjectPayloadCallfixup;
 import ghidra.program.model.lang.InjectPayloadCallother;
 import ghidra.program.model.lang.PcodeInjectLibrary;
+import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.pcode.PcodeOp;
 import ghidra.program.model.pcode.Varnode;
@@ -57,6 +60,8 @@ public class PcodeInjectLibrarySm83 extends PcodeInjectLibrary {
 
     // SP += 2; goto [inst_next + A * 2], bounded by the cases the analyzer marked at the call
     static final class InlineJumpTable extends InjectPayloadCallfixup {
+        private static final int MAX_ENTRIES = 256;
+
         InlineJumpTable(String sourceName) {
             super(sourceName);
         }
@@ -68,7 +73,9 @@ public class PcodeInjectLibrarySm83 extends PcodeInjectLibrary {
             var sp = register(program, "SP");
             var a = register(program, "A");
             var unique = new UniqueVarnodes(program);
-            var cases = GameBoyJumpTableAnalyzer.markedTargets(program, at).size();            var ops = new ArrayList<PcodeOp>();
+            // table entries, not references: repeated targets share one reference
+            var cases = GameBoyJumpTableAnalyzer.markedTargets(program, at).isEmpty() ? 0 : tableEntries(program, context.nextAddr);
+            var ops = new ArrayList<PcodeOp>();
             ops.add(op(at, ops, PcodeOp.INT_ADD, sp, constant(af, 2, sp.getSize()), sp));
             Varnode outside = null;
             PcodeOp guard = null;
@@ -95,6 +102,21 @@ public class PcodeInjectLibrarySm83 extends PcodeInjectLibrary {
                 ops.add(op(at, ops, PcodeOp.RETURN, ret, null, null));
             }
             return ops.toArray(PcodeOp[]::new);
+        }
+
+        // consecutive words markTable created after the call
+        private static int tableEntries(Program program, Address table) {
+            var listing = program.getListing();
+            var count = 0;
+            try {
+                while (count < MAX_ENTRIES && listing.getDataAt(table.addNoWrap(2L * count)) instanceof Data data
+                        && data.getDataType() instanceof WordDataType) {
+                    count++;
+                }
+            } catch (AddressOverflowException e) {
+                // the address space ends the table
+            }
+            return count;
         }
 
         private static PcodeOp op(Address at, List<PcodeOp> ops, int opcode, Varnode in0, Varnode in1, Varnode out) {

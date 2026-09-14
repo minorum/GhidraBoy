@@ -551,6 +551,35 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `inline jump table injection bound counts table entries with repeated targets`() =
+        analyze(
+            "",
+            "0000",
+            rom().also { rom ->
+                // rst08: CALL $0600; RET
+                hex("cd 00 06 c9").copyInto(rom, 0x0008)
+                // LD A,($C800); AND 3; RST 00; dw $0680, $0681, $0681, $0683
+                hex("fa 00 c8 e6 03 c7 80 06 81 06 81 06 83 06").copyInto(rom, 0x0600)
+                // NOP; NOP; NOP; RET
+                hex("00 00 00 c9").copyInto(rom, 0x0680)
+            },
+        ) { program ->
+            val targets = listOf(0x0680L, 0x0681L, 0x0683L).map { program.addr(it) }.toSet()
+            assertEquals(targets, program.refs(0x0605, RefType.COMPUTED_JUMP))
+            val library = program.compilerSpec.pcodeInjectLibrary
+            val payload = library.getPayload(InjectPayload.CALLFIXUP_TYPE, GameBoyJumpTableAnalyzer.INLINE_TABLE_FIXUP)
+            val context =
+                library.buildInjectContext().apply {
+                    baseAddr = program.addr(0x0605)
+                    nextAddr = program.addr(0x0606)
+                    callAddr = program.addr(0x0000)
+                }
+            val guard = payload.getPcode(program, context).single { it.opcode == PcodeOp.INT_LESSEQUAL }
+            // four entries, three distinct targets
+            assertEquals(4L, guard.getInput(0).offset)
+        }
+
+    @Test
     fun `function jumping into another function's inline jump table decompiles the marked cases`() =
         analyze(
             "",
