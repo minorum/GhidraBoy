@@ -152,9 +152,15 @@ class GameBoyLoaderTest : IntegrationTest() {
             val start = program.addressFactory.defaultAddressSpace.getAddress(0x0150)
             assertEquals(start, program.functionManager.getFunctionAt(start)?.entryPoint)
         }
-        // JP into the header is not code
-        load(rom(0x8000, mapOf(0x0101 to 0xc3, 0x0102 to 0x34, 0x0103 to 0x01))) { program ->
-            assertEquals(null, program.symbolTable.getSymbols("start").firstOrNull())
+        // JP into the header, NOP; JR -2 loop, JP past a short ROM
+        listOf(
+            rom(0x8000, mapOf(0x0101 to 0xc3, 0x0102 to 0x34, 0x0103 to 0x01)),
+            rom(0x8000, mapOf(0x0101 to 0x18, 0x0102 to 0xfe)),
+            rom(0x2000, mapOf(0x0101 to 0xc3, 0x0102 to 0x00, 0x0103 to 0x30)),
+        ).forEach { bytes ->
+            load(bytes) { program ->
+                assertEquals(null, program.symbolTable.getSymbols("start").firstOrNull())
+            }
         }
     }
 

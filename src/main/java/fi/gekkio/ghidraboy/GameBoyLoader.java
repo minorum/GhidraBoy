@@ -172,7 +172,7 @@ public class GameBoyLoader extends AbstractProgramLoader {
                 return null;
             }
         }
-        return target < 0x4000 && (target < 0x0104 || target >= 0x0150) ? target : null;
+        return target < Math.min(provider.length(), 0x4000) && (target < 0x0100 || target >= 0x0150) ? target : null;
     }
 
     @Override
