@@ -473,8 +473,40 @@ class DecompilerTest : IntegrationTest() {
     @Test
     fun `calling conventions are available`() {
         val names = language.defaultCompilerSpec.callingConventions.map { it.name }
-        val expected = listOf("__asm", "__asm_a", "__asm_hl", "__asm_f", "__asm_void", "__asm_saved")
+        val expected = listOf("__asm", "__asm_a", "__asm_hl", "__asm_f", "__asm_void", "__asm_saved", "__interrupt")
         assertTrue(names.containsAll(expected), names.toString())
+    }
+
+    @Test
+    fun `interrupt convention has no parameters or return value`() {
+        assembleFunction(address(0x0100), "RET", name = "helper")
+        assertDecompiled(
+            assembleFunction(
+                address(0x0000),
+                """
+                PUSH AF
+                PUSH BC
+                PUSH DE
+                PUSH HL
+                CALL 0x0100
+                POP HL
+                POP DE
+                POP BC
+                POP AF
+                RETI
+                """.trimIndent(),
+                name = "handler",
+                callingConvention = "__interrupt",
+            ),
+            """
+            void __interrupt handler(void)
+            {
+                helper();
+                IME(1);
+                return;
+            }
+            """.trimIndent(),
+        )
     }
 
     private fun callerOfHelper(helperConvention: String): Function {

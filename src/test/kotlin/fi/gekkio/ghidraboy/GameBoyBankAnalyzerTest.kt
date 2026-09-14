@@ -21,8 +21,12 @@ import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.importer.ProgramLoader
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSet
+import ghidra.program.model.data.ByteDataType
 import ghidra.program.model.listing.FlowOverride
+import ghidra.program.model.listing.Function.FunctionUpdateType
+import ghidra.program.model.listing.ParameterImpl
 import ghidra.program.model.listing.Program
+import ghidra.program.model.listing.ReturnParameterImpl
 import ghidra.program.model.symbol.RefType
 import ghidra.program.model.symbol.SourceType
 import ghidra.util.task.TaskMonitor
@@ -445,6 +449,41 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                 GameBoyJumpTableAnalyzer().added(program, AddressSet(from), TaskMonitor.DUMMY, MessageLog())
             }
             assertTrue(program.addr(0x7fff) in program.refs(0x030e, RefType.COMPUTED_JUMP))
+        }
+
+    @Test
+    fun `interrupt vectors and their handlers use the interrupt convention`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // serial: JP $0500; rst08: CALL $0500; RET
+                hex("c3 00 05").copyInto(rom, 0x0058)
+                hex("cd 00 05 c9").copyInto(rom, 0x0008)
+                // PUSH AF; CALL $0200; POP AF; RETI
+                hex("f5 cd 00 02 f1 d9").copyInto(rom, 0x0500)
+            },
+        ) { program ->
+            fun convention(offset: Long) = program.functionManager.getFunctionAt(program.addr(offset))?.callingConventionName
+            assertEquals("__interrupt", convention(0x0058))
+            assertEquals("__interrupt", convention(0x0500))
+            assertFalse(convention(0x0008) == "__interrupt")
+            // re-analysis drops a signature found by other analyzers
+            val handler = program.functionManager.getFunctionAt(program.addr(0x0500))
+            program.withTransaction {
+                handler.updateFunction(
+                    "__asm",
+                    ReturnParameterImpl(ByteDataType.dataType, program),
+                    listOf(ParameterImpl("a", ByteDataType.dataType, program)),
+                    FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
+                    false,
+                    SourceType.ANALYSIS,
+                )
+                GameBoyInterruptAnalyzer().added(program, handler.body, TaskMonitor.DUMMY, MessageLog())
+            }
+            assertEquals("__interrupt", handler.callingConventionName)
+            assertEquals(0, handler.parameterCount)
+            assertEquals("void", handler.returnType.name)
         }
 
     @Test
