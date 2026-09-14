@@ -22,10 +22,13 @@ import ghidra.program.database.function.OverlappingFunctionException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.listing.FlowOverride;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.symbol.SourceType;
 import ghidra.util.exception.CancelledException;
+import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
 
 import java.util.ArrayList;
@@ -73,7 +76,55 @@ public class GameBoyUnownedCodeAnalyzer extends AbstractAnalyzer {
                 break;
             }
         }
+        for (var instr : unowned) {
+            monitor.checkCancelled();
+            if (functions.getFunctionContaining(instr.getAddress()) == null) {
+                bankedTailEntry(program, instr.getAddress(), monitor);
+            }
+        }
         return true;
+    }
+
+    // home code entered only by jumps from banked functions: those jumps are tail calls
+    private static void bankedTailEntry(Program program, Address address, TaskMonitor monitor) throws CancelledException {
+        var listing = program.getListing();
+        var functions = program.getFunctionManager();
+        var prev = listing.getInstructionBefore(address);
+        if (address.getAddressSpace().isOverlaySpace() || (prev != null && address.equals(prev.getFallThrough()))) {
+            return;
+        }
+        var jumps = new ArrayList<Instruction>();
+        for (var ref : program.getReferenceManager().getReferencesTo(address)) {
+            var from = listing.getInstructionAt(ref.getFromAddress());
+            var type = ref.getReferenceType();
+            if (from == null || !type.isFlow() || type.isCall() || !from.getAddress().getAddressSpace().isOverlaySpace()
+                    || functions.getFunctionContaining(from.getAddress()) == null) {
+                return;
+            }
+            jumps.add(from);
+        }
+        if (jumps.isEmpty()) {
+            return;
+        }
+        var body = ownBody(program, address, null, monitor);
+        try {
+            functions.createFunction(null, address, body, SourceType.ANALYSIS);
+        } catch (InvalidInputException | OverlappingFunctionException e) {
+            return;
+        }
+        jumps.forEach(jump -> jump.setFlowOverride(FlowOverride.CALL_RETURN));
+    }
+
+    // flow body from entry without code other functions own
+    private static AddressSet ownBody(Program program, Address entry, Function function, TaskMonitor monitor) throws CancelledException {
+        var body = new AddressSet(CreateFunctionCmd.getFunctionBody(program, entry, false, monitor));
+        for (var it = program.getFunctionManager().getFunctionsOverlapping(body); it.hasNext();) {
+            var other = it.next();
+            if (!other.equals(function)) {
+                body.delete(other.getBody());
+            }
+        }
+        return body;
     }
 
     // functions reaching address by a jump or fall-through
@@ -99,16 +150,9 @@ public class GameBoyUnownedCodeAnalyzer extends AbstractAnalyzer {
 
     // recomputed bodies never take code from other functions
     static void fixupBodies(Program program, Iterable<Function> functions, TaskMonitor monitor) throws CancelledException {
-        var manager = program.getFunctionManager();
         for (var function : functions) {
             monitor.checkCancelled();
-            var body = new AddressSet(CreateFunctionCmd.getFunctionBody(program, function.getEntryPoint(), false, monitor));
-            for (var it = manager.getFunctionsOverlapping(body); it.hasNext();) {
-                var other = it.next();
-                if (!other.equals(function)) {
-                    body.delete(other.getBody());
-                }
-            }
+            var body = ownBody(program, function.getEntryPoint(), function, monitor);
             if (!body.contains(function.getEntryPoint()) || body.equals(function.getBody())) {
                 continue;
             }
