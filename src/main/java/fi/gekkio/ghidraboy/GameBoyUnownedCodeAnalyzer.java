@@ -97,7 +97,8 @@ public class GameBoyUnownedCodeAnalyzer extends AbstractAnalyzer {
         for (var ref : program.getReferenceManager().getReferencesTo(address)) {
             var from = listing.getInstructionAt(ref.getFromAddress());
             var type = ref.getReferenceType();
-            if (from == null || !type.isFlow() || type.isCall() || !from.getAddress().getAddressSpace().isOverlaySpace()
+            // direct jumps only: an override on a computed jump would drop its other cases
+            if (from == null || !type.isJump() || type.isComputed() || !from.getAddress().getAddressSpace().isOverlaySpace()
                     || functions.getFunctionContaining(from.getAddress()) == null) {
                 return;
             }
