@@ -27,6 +27,8 @@ import ghidra.program.model.data.ByteDataType;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataUtilities;
 import ghidra.program.model.data.WordDataType;
+import ghidra.program.model.listing.Bookmark;
+import ghidra.program.model.listing.BookmarkType;
 import ghidra.program.model.listing.FlowOverride;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
@@ -131,6 +133,9 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             }
         }
 
+        if (!disassemble.isEmpty()) {
+            retryConflicts(program, disassemble);
+        }
         var manager = AutoAnalysisManager.getAnalysisManager(program);
         if (!disassemble.isEmpty()) {
             manager.disassemble(disassemble);
@@ -139,6 +144,31 @@ public class GameBoyBankAnalyzer extends AbstractAnalyzer {
             manager.createFunction(functions, false);
         }
         return true;
+    }
+
+    // targets that failed to disassemble over code a later fixup cleared
+    private static void retryConflicts(Program program, AddressSet disassemble) {
+        var bookmarks = program.getBookmarkManager();
+        var listing = program.getListing();
+        var stale = new ArrayList<Bookmark>();
+        for (var it = bookmarks.getBookmarksIterator(BookmarkType.ERROR); it.hasNext();) {
+            var bookmark = it.next();
+            var at = bookmark.getAddress();
+            if ("Bad Instruction".equals(bookmark.getCategory()) && listing.isUndefined(at, at) && hasOwnReferenceTo(program, at)) {
+                stale.add(bookmark);
+                disassemble.add(at);
+            }
+        }
+        stale.forEach(bookmarks::removeBookmark);
+    }
+
+    private static boolean hasOwnReferenceTo(Program program, Address to) {
+        for (var ref : program.getReferenceManager().getReferencesTo(to)) {
+            if (ref.getSource() == SourceType.ANALYSIS && (ref.getReferenceType().isOverride() || ref.getReferenceType() == RefType.COMPUTED_JUMP)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean hasOwnReference(Program program, Address from) {
