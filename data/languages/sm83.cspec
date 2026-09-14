@@ -146,6 +146,20 @@
       <register name="HL"/>
     </unaffected>
   </prototype>
+  <!-- interrupt handler: no arguments, every register preserved -->
+  <prototype name="__interrupt" extrapop="2" stackshift="2" strategy="register">
+    <input>
+    </input>
+    <output>
+    </output>
+    <unaffected>
+      <register name="AF"/>
+      <register name="BC"/>
+      <register name="DE"/>
+      <register name="HL"/>
+      <register name="SP"/>
+    </unaffected>
+  </prototype>
   <callotherfixup targetop="bank_ram">
     <pcode dynamic="true">
       <input name="value"/>

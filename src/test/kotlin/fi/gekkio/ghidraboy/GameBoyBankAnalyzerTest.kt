@@ -386,6 +386,25 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
         }
 
     @Test
+    fun `interrupt vectors and their handlers use the interrupt convention`() =
+        analyze(
+            "",
+            "",
+            rom().also { rom ->
+                // serial: JP $0500; rst08: CALL $0500; RET
+                hex("c3 00 05").copyInto(rom, 0x0058)
+                hex("cd 00 05 c9").copyInto(rom, 0x0008)
+                // PUSH AF; CALL $0200; POP AF; RETI
+                hex("f5 cd 00 02 f1 d9").copyInto(rom, 0x0500)
+            },
+        ) { program ->
+            fun convention(offset: Long) = program.functionManager.getFunctionAt(program.addr(offset))?.callingConventionName
+            assertEquals("__interrupt", convention(0x0058))
+            assertEquals("__interrupt", convention(0x0500))
+            assertFalse(convention(0x0008) == "__interrupt")
+        }
+
+    @Test
     fun `dispatchers are not assumed without options`() =
         analyze("", "") { program ->
             assertTrue(program.refs(0x0158, RefType.CALL_OVERRIDE_UNCONDITIONAL).isEmpty())
