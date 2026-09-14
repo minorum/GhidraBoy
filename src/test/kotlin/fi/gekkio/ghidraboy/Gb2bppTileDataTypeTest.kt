@@ -45,6 +45,8 @@ class Gb2bppTileDataTypeTest : IntegrationTest() {
             ByteArray(0x8000).also { rom ->
                 LOGO.copyInto(rom, 0x0104)
                 (0..1).forEach { tile.copyInto(rom, 0x0200 + 16 * it) }
+                // element 1, row 0: low bitplane 0xff
+                rom[0x0210] = 0xff.toByte()
             }
         ProgramLoader.builder().source(rom).name("tiles.gb").loaders(GameBoyLoader::class.java).load().use { results ->
             val program = results.getPrimaryDomainObject(this)
@@ -65,6 +67,10 @@ class Gb2bppTileDataTypeTest : IntegrationTest() {
                 assertEquals(2, data.numComponents)
                 val image = (data.getComponent(1).value as DataImage).imageIcon.image as BufferedImage
                 assertEquals(8 to 8, image.width to image.height)
+                assertEquals(
+                    listOf(0xaaaaaa, 0xaaaaaa, 0x000000, 0x000000, 0xaaaaaa, 0xaaaaaa, 0x000000, 0x000000),
+                    (0 until 8).map { image.getRGB(it, 0) and 0xffffff },
+                )
                 assertEquals(
                     listOf(0xffffff, 0xffffff, 0x555555, 0x555555, 0xaaaaaa, 0xaaaaaa, 0x000000, 0x000000),
                     (0 until 8).map { image.getRGB(it, 7) and 0xffffff },
