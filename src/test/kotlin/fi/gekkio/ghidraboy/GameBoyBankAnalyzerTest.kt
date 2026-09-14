@@ -317,8 +317,15 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
                 hex("e1 5e 23 56 23 2a e5 ea 00 20 d5 c9").copyInto(rom, 0x0200)
                 // CALL $0200 / db $10,$40,$03; LD A,4; LD ($D00F),A; CALL $0200 / db $00,$40,$02; RET
                 hex("cd 00 02 10 40 03 3e 04 ea 0f d0 cd 00 02 00 40 02 c9").copyInto(rom, 0x0600)
+                // more far call sites: rst10/rst18 call $0620-$0650, each CALL $0200 / db $10,$40,$03; RET
+                hex("cd 20 06 cd 30 06 c9").copyInto(rom, 0x0010)
+                hex("cd 40 06 cd 50 06 c9").copyInto(rom, 0x0018)
+                (0x0620..0x0650 step 0x10).forEach { hex("cd 00 02 10 40 03 c9").copyInto(rom, it) }
             },
         ) { program ->
+            // call sites followed by data must not make the dispatcher or the callee non-returning
+            assertFalse(program.functionManager.getFunctionAt(program.addr(0x0200))?.hasNoReturn() == true)
+            assertFalse(program.functionManager.getFunctionAt(program.bankAddr(3, 0x4010))?.hasNoReturn() == true)
             val function = program.functionManager.getFunctionAt(program.addr(0x0600))
             assertNotNull(function)
             val decompiler = DecompInterface()
