@@ -21,7 +21,9 @@ import ghidra.app.util.importer.MessageLog
 import ghidra.app.util.importer.ProgramLoader
 import ghidra.program.model.address.Address
 import ghidra.program.model.address.AddressSet
+import ghidra.program.model.data.ArrayDataType
 import ghidra.program.model.data.ByteDataType
+import ghidra.program.model.data.DataUtilities
 import ghidra.program.model.listing.BookmarkType
 import ghidra.program.model.listing.FlowOverride
 import ghidra.program.model.listing.Function.FunctionUpdateType
@@ -838,14 +840,13 @@ class GameBoyBankAnalyzerTest : IntegrationTest() {
             },
             setup = { program ->
                 // the jump target is data until a later fixup clears it
-                ghidra.program.model.data.DataUtilities.createData(
+                DataUtilities.createData(
                     program,
                     program.addr(0x0640),
-                    ghidra.program.model.data
-                        .ArrayDataType(ByteDataType.dataType, 6, 1),
+                    ArrayDataType(ByteDataType.dataType, 6, 1),
                     -1,
                     false,
-                    ghidra.program.model.data.DataUtilities.ClearDataMode.CLEAR_ALL_UNDEFINED_CONFLICT_DATA,
+                    DataUtilities.ClearDataMode.CLEAR_ALL_UNDEFINED_CONFLICT_DATA,
                 )
             },
         ) { program ->
