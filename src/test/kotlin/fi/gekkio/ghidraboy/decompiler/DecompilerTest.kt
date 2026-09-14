@@ -195,9 +195,9 @@ class DecompilerTest : IntegrationTest() {
             assembleFunction(
                 address(0x0000),
                 """
-                LDH A, (0x40)
+                LDH A, (0xff40)
                 OR 0x80
-                LDH (0x40), A
+                LDH (0xff40), A
                 RET
                 """.trimIndent(),
             )
@@ -219,9 +219,9 @@ class DecompilerTest : IntegrationTest() {
             assembleFunction(
                 address(0x0000),
                 """
-                LDH A, (0xFF)
+                LDH A, (0xffff)
                 AND 0xFE
-                LDH (0xFF), A
+                LDH (0xffff), A
                 RET
                 """.trimIndent(),
             )
@@ -243,7 +243,7 @@ class DecompilerTest : IntegrationTest() {
             assembleFunction(
                 address(0x0000),
                 """
-                LDH A, (0x41)
+                LDH A, (0xff41)
                 AND 0x03
                 CP 0x01
                 RET NZ
@@ -276,9 +276,9 @@ class DecompilerTest : IntegrationTest() {
             assembleFunction(
                 address(0x0000),
                 """
-                LDH A, (0x0F)
+                LDH A, (0xff0f)
                 AND 0xFE
-                LDH (0x0F), A
+                LDH (0xff0f), A
                 RET
                 """.trimIndent(),
             )
@@ -341,27 +341,27 @@ class DecompilerTest : IntegrationTest() {
                 address(0x0000),
                 """
                 LD A, 0x20
-                LDH (0x00), A
-                LDH A, (0x00)
-                LDH A, (0x00)
+                LDH (0xff00), A
+                LDH A, (0xff00)
+                LDH A, (0xff00)
                 CPL
                 AND 0x0F
                 SWAP A
                 LD B, A
                 LD A, 0x10
-                LDH (0x00), A
-                LDH A, (0x00)
-                LDH A, (0x00)
-                LDH A, (0x00)
-                LDH A, (0x00)
-                LDH A, (0x00)
-                LDH A, (0x00)
+                LDH (0xff00), A
+                LDH A, (0xff00)
+                LDH A, (0xff00)
+                LDH A, (0xff00)
+                LDH A, (0xff00)
+                LDH A, (0xff00)
+                LDH A, (0xff00)
                 CPL
                 AND 0x0F
                 OR B
                 LD B, A
                 LD A, 0x30
-                LDH (0x00), A
+                LDH (0xff00), A
                 LD A, B
                 RET
                 """.trimIndent(),

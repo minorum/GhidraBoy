@@ -115,9 +115,10 @@ CMem8: (C) is C {
   export *:1 ptr;
 }
 
-HiMem8: (imm8) is imm8 {
-  local off:1 = imm8;
-  local ptr:2 = 0xff00 | zext(off);
+HiMem8: (addr) is imm8 [
+  addr = 0xff00 + imm8;
+] {
+  local ptr:2 = addr;
   export *:1 ptr;
 }
 

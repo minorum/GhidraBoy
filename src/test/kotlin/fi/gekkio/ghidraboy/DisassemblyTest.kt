@@ -707,7 +707,7 @@ class DisassemblyTest : IntegrationTest() {
     fun `can disassemble RST 0x18`() = test(0xdf, "RST 0x0018")
 
     @Test
-    fun `can disassemble LDH (n), A`() = test(0xe0, "LDH (0x55),A", 0x55)
+    fun `can disassemble LDH (n), A`() = test(0xe0, "LDH (0xff55),A", 0x55)
 
     @Test
     fun `can disassemble POP HL`() = test(0xe1, "POP HL")
@@ -761,7 +761,7 @@ class DisassemblyTest : IntegrationTest() {
     fun `can disassemble RST 0x28`() = test(0xef, "RST 0x0028")
 
     @Test
-    fun `can disassemble LDH A, (n)`() = test(0xf0, "LDH A,(0x55)", 0x55)
+    fun `can disassemble LDH A, (n)`() = test(0xf0, "LDH A,(0xff55)", 0x55)
 
     @Test
     fun `can disassemble POP AF`() = test(0xf1, "POP AF")
