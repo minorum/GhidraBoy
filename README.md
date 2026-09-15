@@ -1,9 +1,9 @@
-# GhidraBoy: Sharp SM83 / Game Boy extension for Ghidra
+# ghidra-sm83: Sharp SM83 / Game Boy extension for Ghidra
 
 **Very experimental! No compatibility guarantees!**
 
 Continuation of [Gekkio/GhidraBoy](https://github.com/Gekkio/GhidraBoy), which
-is archived. Report issues [here](https://github.com/minorum/GhidraBoy/issues).
+is archived. Report issues [here](https://github.com/minorum/ghidra-sm83/issues).
 
 Supported Ghidra versions:
 
@@ -30,11 +30,11 @@ Supported Ghidra versions:
 
 ## How to install
 
-1. Download a [prebuilt GhidraBoy release](https://github.com/minorum/GhidraBoy/releases), or build it yourself.
+1. Download a [prebuilt release](https://github.com/minorum/ghidra-sm83/releases), or build it yourself.
 2. Start Ghidra
-3. File -> Install Extensions
+3. File -> Install Extensions; uninstall GhidraBoy if it is installed
 4. Press the plus icon ("Add extension")
-5. Choose the built or downloaded GhidraBoy zip file
+5. Choose the built or downloaded ghidra-sm83 zip file
 6. Restart Ghidra when prompted to load the extension properly
 
 ## How to build
