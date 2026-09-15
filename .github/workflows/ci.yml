@@ -39,8 +39,8 @@ jobs:
       - run: ./gradlew build
       - uses: actions/upload-artifact@v4
         with:
-          name: GhidraBoy_Ghidra_${{ matrix.ghidra_version }}
-          path: build/distributions/*_GhidraBoy.zip
+          name: ghidra-sm83_Ghidra_${{ matrix.ghidra_version }}
+          path: build/distributions/*_ghidra-sm83.zip
           if-no-files-found: 'error'
   release:
     if: github.ref_type == 'tag'
@@ -57,4 +57,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create --verify-tag --generate-notes --draft "${{ github.ref_name }}"
-          gh release upload "${{ github.ref_name }}" GhidraBoy_Ghidra_*/*.zip
+          gh release upload "${{ github.ref_name }}" ghidra-sm83_Ghidra_*/*.zip

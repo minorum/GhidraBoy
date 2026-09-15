@@ -84,7 +84,7 @@ val generateExtensionProps by tasks.registering {
             val props = Properties()
             props +=
                 mapOf(
-                    ("name" to "GhidraBoy"),
+                    ("name" to project.name),
                     ("description" to "Support for Sharp SM83 / Game Boy"),
                     ("author" to "Gekkio"),
                     ("createdOn" to LocalDate.now().toString()),

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed to ghidra-sm83 (extension, zip and repository). Uninstall GhidraBoy
+  before installing it
+
 ## 20260915 - 2026-09-15
 
 First release of this continuation; upstream Gekkio/GhidraBoy is archived.
