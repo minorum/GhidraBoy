@@ -132,7 +132,7 @@ val zip by tasks.registering(Zip::class) {
         into("data/")
         include("**/*.cspec", "**/*.ldefs", "**/*.pspec", "**/*.sinc", "**/*.slaspec", "**/sleighArgs.txt")
     }
-    from("README.markdown", "LICENSE", "Module.manifest")
+    from("README.md", "LICENSE", "Module.manifest")
 }
 
 tasks.named("assemble") {
