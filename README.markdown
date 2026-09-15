@@ -2,6 +2,9 @@
 
 **Very experimental! No compatibility guarantees!**
 
+Continuation of [Gekkio/GhidraBoy](https://github.com/Gekkio/GhidraBoy), which
+is archived. Report issues [here](https://github.com/minorum/GhidraBoy/issues).
+
 Supported Ghidra versions:
 
 - 12.1.3
@@ -27,7 +30,7 @@ Supported Ghidra versions:
 
 ## How to install
 
-1. Download a [prebuilt GhidraBoy release](https://github.com/Gekkio/GhidraBoy/releases), or build it yourself.
+1. Download a [prebuilt GhidraBoy release](https://github.com/minorum/GhidraBoy/releases), or build it yourself.
 2. Start Ghidra
 3. File -> Install Extensions
 4. Press the plus icon ("Add extension")

@@ -2,7 +2,28 @@
 
 ## [Unreleased]
 
+## 20260915 - 2026-09-15
+
+First release of this continuation; upstream Gekkio/GhidraBoy is archived.
+
 ### Added
+
+- Data types `gb_2bpp_tile` (8×8 2bpp tile image), `gb_far_ptr_ba` /
+  `gb_far_ptr_ab` (bank + address pointers referencing banked ROM),
+  `gb_cgb_color` and `gb_cgb_palette` (BGR555 colors with swatches)
+- "Game Boy Interrupt Handlers" analyzer: `__interrupt` convention (no
+  parameters, every register preserved) on vectors and their handlers
+- "Game Boy Callee-Saved Registers" analyzer: `__asm_saved` on functions that
+  push BC, DE and HL on entry and pop them before every return, including
+  balanced inner PUSH/POP pairs
+- "Game Boy Unowned Code" analyzer: code disassembled later is attached to the
+  functions jumping into it; home code entered only from banked code becomes
+  its own function
+- Routines copied from ROM into RAM are mapped as executable `wram_code_*` /
+  `hram_code_*` overlays, and calls and jumps into the copy target them
+- Inline jump table dispatchers decompile as a switch bounded by the table
+  size or a preceding `AND n` / `CP n`
+- Configurable inline argument dispatchers in the bank analyzer
 
 - RST and interrupt vectors are entry points, so analysis creates functions there
 - Echo RAM blocks mapped onto work RAM
@@ -40,6 +61,12 @@
 - Build with Java 21 target
 - SBC carry is expressed as a comparison, so 16-bit `SUB` / `SBC` compares
   decompile as a three-way byte comparison
+- MBC register writes decompile as `mbc_write(address, value)`
+- `LDH (n)` operands display the `$FFxx` address
+- Far `JP` into banked ROM and `JP` into RAM routines are tail calls
+- Calls clobber F
+- Non-returning function discovery is disabled for SM83
+- The header jump target is the start entry point
 
 ### Fixed
 
@@ -50,6 +77,11 @@
 - POP AF kept the low nibble of F
 - STOP is decoded as a 2-byte instruction
 - DAA is implemented in p-code instead of the `daaOperand` user op
+- Bank switches done by a called helper are tracked
+- `JP (HL)` tables with an 8-bit index added with carry into H are recovered
+- Table targets blocked by cleared code are disassembled
+- Resolved far `JP` targets in banked ROM are disassembled
+- Decompiler timeout in functions entering another function's inline jump table
 
 ## 20250830 - 2025-08-30
 
