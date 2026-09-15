@@ -2,14 +2,9 @@
 
 ## [Unreleased]
 
-### Changed
-
-- Renamed to ghidra-sm83 (extension, zip and repository). Uninstall GhidraBoy
-  before installing it
-
 ## 20260915 - 2026-09-15
 
-First release of this continuation; upstream Gekkio/GhidraBoy is archived.
+First release of ghidra-sm83, the continuation of the archived Gekkio/GhidraBoy.
 
 ### Added
 
@@ -29,7 +24,6 @@ First release of this continuation; upstream Gekkio/GhidraBoy is archived.
 - Inline jump table dispatchers decompile as a switch bounded by the table
   size or a preceding `AND n` / `CP n`
 - Configurable inline argument dispatchers in the bank analyzer
-
 - RST and interrupt vectors are entry points, so analysis creates functions there
 - Echo RAM blocks mapped onto work RAM
 - Cartridge RAM banks from the header RAM size, as overlays
@@ -55,6 +49,8 @@ First release of this continuation; upstream Gekkio/GhidraBoy is archived.
 
 ### Changed
 
+- Renamed to ghidra-sm83 (extension, zip and repository). Uninstall GhidraBoy
+  before installing it
 - Only I/O registers that change without CPU writes are volatile (declared in
   the processor spec), so the decompiler shows register writes such as
   `LCDC = LCDC | LCDCF_ON`. In existing projects, clear the Volatile flag of the
